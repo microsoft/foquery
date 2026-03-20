@@ -1,0 +1,51 @@
+{
+  "name": "@foquery/source",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "nx": "nx",
+    "graph": "nx graph",
+    "typecheck": "nx run-many -t typecheck",
+    "build": "nx run-many -t build",
+    "lint": "nx run-many -t lint",
+    "lint:fix": "nx run-many -t lint -- --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "dev": "nx run example:dev",
+    "test": "nx run-many -t test",
+    "all": "npm run format && npm run lint && npm run typecheck && npm run build && npm run test",
+    "prepublish:packages": "npm run all && cp LICENSE packages/foquery/ && cp LICENSE packages/foquery-react/ && cp LICENSE packages/foquery-dom/",
+    "publish:foquery": "npm run prepublish:packages && npm -w foquery publish",
+    "publish:foquery-react": "npm run prepublish:packages && npm -w foquery-react publish",
+    "publish:foquery-dom": "npm run prepublish:packages && npm -w foquery-dom publish",
+    "publish:all": "npm run prepublish:packages && npm -w foquery publish && npm -w foquery-react publish && npm -w foquery-dom publish",
+    "publish:dry-run": "npm run prepublish:packages && npm -w foquery publish --dry-run && npm -w foquery-react publish --dry-run && npm -w foquery-dom publish --dry-run"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@nx/js": "22.6.0",
+    "@types/chrome": "^0.1.38",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "@vitest/browser": "^4.1.0",
+    "@vitest/browser-playwright": "^4.1.0",
+    "eslint": "^10.0.3",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-header": "^3.1.1",
+    "globals": "^17.4.0",
+    "nx": "22.6.0",
+    "playwright": "^1.58.2",
+    "prettier": "^3.8.1",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.57.1",
+    "vite": "^8.0.1",
+    "vitest": "^4.1.0"
+  }
+}

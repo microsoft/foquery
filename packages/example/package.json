@@ -1,0 +1,9 @@
+{
+  "name": "foquery-example",
+  "version": "0.0.0",
+  "private": true,
+  "dependencies": {
+    "foquery": "*",
+    "foquery-react": "*"
+  }
+}

@@ -1,18 +1,99 @@
-# Project
+# FoQuery
 
-> This repo has been populated by an initial template to help get you started. Please
-> make sure to update the content to build a great experience for community-building.
+A library for building and querying a parallel XML tree that mirrors a UI component hierarchy. Enables XPath-based element discovery and programmatic focus management.
 
-As the maintainer of this project, please make a few updates:
+## Packages
 
-- Improving this README.MD file to provide a great experience
-- Updating SUPPORT.MD with content about this project's support experience
-- Understanding the security reporting process in SECURITY.MD
-- Remove this section from the README
+| Package                                          | Description                                                           |
+| ------------------------------------------------ | --------------------------------------------------------------------- |
+| [`foquery`](packages/foquery/)                   | Core library — XML tree, node classes, XPath querying, focus requests |
+| [`foquery-react`](packages/foquery-react/)       | React bindings — provider, parent component, leaf hook                |
+| [`foquery-dom`](packages/foquery-dom/)           | Vanilla DOM bindings — imperative API with MutationObserver cleanup   |
+| [`foquery-devtools`](packages/foquery-devtools/) | Chrome DevTools extension for inspecting FoQuery trees                |
+| [`example`](packages/example/)                   | React example app demonstrating all features                          |
+
+## How it works
+
+FoQuery maintains an XML document that mirrors your UI's logical focus structure. Parent nodes define regions, leaf nodes define focusable elements. The XML tree can be queried with XPath to find and focus elements programmatically.
+
+```
+Root
+├── header
+│   ├── ◆ DefaultItem (Home button)
+│   └── ◆ SelectedItem (Search button)
+├── sidebar
+│   └── ◆ SelectedItem (Inbox)
+├── content [focus=".//SelectedItem"]
+│   ├── messages [focus="./thread/SelectedItem"]
+│   │   ├── thread
+│   │   │   └── ◆ SelectedItem (Message 1)
+│   │   └── compose
+│   │       └── ◆ SelectedItem (Send)
+│   └── details
+│       └── ◆ SelectedItem (Edit)
+└── footer
+    └── ◆ DefaultItem (Action)
+```
+
+Query with XPath:
+
+```ts
+root.query("//content//SelectedItem"); // all SelectedItems under content
+root.query("//compose/SelectedItem"); // Send button
+root.requestFocus("//content/messages/compose/SelectedItem"); // focus the Send button
+```
+
+## Quick start
+
+### React
+
+```tsx
+import { FoQueryProvider, FoQueryParent, useFoQuery } from "foquery-react";
+
+function Leaf({ names, children }) {
+  const ref = useFoQuery(names);
+  return <button ref={ref}>{children}</button>;
+}
+
+function App() {
+  return (
+    <FoQueryProvider rootName="Root" devtools>
+      <FoQueryParent name="main" focus="./SelectedItem">
+        <Leaf names={["SelectedItem"]}>Click me</Leaf>
+        <Leaf names={["DefaultItem"]}>Other</Leaf>
+      </FoQueryParent>
+    </FoQueryProvider>
+  );
+}
+```
+
+### Vanilla DOM
+
+```ts
+import { FoQueryDOMRoot } from "foquery-dom";
+
+const domRoot = new FoQueryDOMRoot(container);
+const main = domRoot.appendParent(mainEl, "main");
+const leaf = main.appendLeaf(btnEl, ["SelectedItem"]);
+
+domRoot.root.requestFocus("//main/SelectedItem");
+```
+
+## Development
+
+```sh
+npm install
+npm run dev          # start example app
+npm run all          # format → lint → typecheck → build → test
+npm run test         # run all tests
+npm run build        # build all packages
+npm run lint         # lint all packages
+npm run graph        # Nx dependency graph
+```
 
 ## Contributing
 
-This project welcomes contributions and suggestions.  Most contributions require you to agree to a
+This project welcomes contributions and suggestions. Most contributions require you to agree to a
 Contributor License Agreement (CLA) declaring that you have the right to, and actually do, grant us
 the rights to use your contribution. For details, visit [Contributor License Agreements](https://cla.opensource.microsoft.com).
 

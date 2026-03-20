@@ -1,0 +1,29 @@
+{
+  "name": "foquery-dom",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "packages/foquery-dom/src",
+  "projectType": "library",
+  "targets": {
+    "build": {
+      "command": "tsc --project tsconfig.build.json",
+      "options": {
+        "cwd": "packages/foquery-dom"
+      }
+    },
+    "typecheck": {
+      "command": "tsc --project tsconfig.json --noEmit",
+      "options": {
+        "cwd": "packages/foquery-dom"
+      }
+    },
+    "lint": {
+      "command": "eslint packages/foquery-dom/src"
+    },
+    "test": {
+      "command": "vitest run",
+      "options": {
+        "cwd": "packages/foquery-dom"
+      }
+    }
+  }
+}

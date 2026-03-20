@@ -1,0 +1,51 @@
+# foquery-dom
+
+Vanilla DOM bindings for FoQuery. Provides an imperative API to build the FoQuery XML tree without any framework, using `appendParent`/`appendLeaf`/`remove`.
+
+## API
+
+### FoQueryDOMRoot
+
+Creates a root node bound to a container element. Uses `MutationObserver` to automatically clean up parent nodes when their DOM elements are removed.
+
+```ts
+const domRoot = new FoQueryDOMRoot(container, "Root");
+domRoot.root.query("//main/SelectedItem");
+domRoot.root.requestFocus("//main/SelectedItem");
+domRoot.dispose(); // cleanup
+```
+
+### FoQueryDOMParent
+
+Parent node bound to a DOM element. Created via `appendParent` on root or another parent.
+
+```ts
+const header = domRoot.appendParent(headerEl, "header");
+const nav = header.appendParent(navEl, "nav", "./SelectedItem"); // with string focus
+
+nav.rename("navigation");
+nav.remove();
+```
+
+### FoQueryDOMLeaf
+
+Leaf node bound to a DOM element. Created via `appendLeaf` on a parent.
+
+```ts
+const leaf = header.appendLeaf(btnEl, ["SelectedItem", "DefaultItem"]);
+
+leaf.rename(["FocusedItem"]);
+leaf.remove();
+```
+
+## DOM attributes
+
+Nodes are tagged with data attributes for identification:
+
+- `data-foquery-root` on the root container
+- `data-foquery-parent` on parent elements
+- `data-foquery-leaf` on leaf elements
+
+## Auto-cleanup
+
+When a DOM element with `data-foquery-parent` is removed from the DOM (including nested removals), the `MutationObserver` on the root automatically calls `remove()` on the corresponding parent node.

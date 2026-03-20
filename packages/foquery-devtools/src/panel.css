@@ -1,0 +1,326 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: monospace;
+  font-size: 12px;
+  color: #d4d4d4;
+  background: #1e1e1e;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+#toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: #252526;
+  border-bottom: 1px solid #3c3c3c;
+  flex-shrink: 0;
+}
+
+#toolbar label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+#toolbar input {
+  background: #3c3c3c;
+  color: #d4d4d4;
+  border: 1px solid #555;
+  padding: 2px 6px;
+  font-family: monospace;
+  font-size: 12px;
+  width: 180px;
+}
+
+#toolbar button,
+#xpath-bar button {
+  background: #0e639c;
+  color: #fff;
+  border: none;
+  padding: 3px 10px;
+  cursor: pointer;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+#toolbar button:hover,
+#xpath-bar button:hover:not(:disabled) {
+  background: #1177bb;
+}
+
+#xpath-bar button:disabled {
+  background: #3c3c3c;
+  color: #808080;
+  cursor: default;
+}
+
+#status {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #555;
+  flex-shrink: 0;
+}
+
+#status.connected {
+  background: #4ec9b0;
+}
+
+#xpath-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: #252526;
+  border-bottom: 1px solid #3c3c3c;
+  flex-shrink: 0;
+}
+
+#xpath-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #555;
+  flex-shrink: 0;
+}
+
+#xpath-status.valid {
+  background: #4ec9b0;
+}
+
+#xpath-status.invalid {
+  background: #f44747;
+}
+
+#xpath-context {
+  color: #dcdcaa;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+#xpath-context:empty {
+  display: none;
+}
+
+#xpath-input {
+  flex: 1;
+  background: #3c3c3c;
+  color: #d4d4d4;
+  border: 1px solid #555;
+  padding: 4px 8px;
+  font-family: monospace;
+  font-size: 12px;
+}
+
+#xpath-input.invalid {
+  border-color: #f44747;
+}
+
+#xpath-input.valid {
+  border-color: #4ec9b0;
+}
+
+#xpath-results {
+  color: #9cdcfe;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+#main-layout {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+#tree-container {
+  flex: 1;
+  padding: 10px;
+  overflow: auto;
+}
+
+#sidebar {
+  width: 280px;
+  border-left: 1px solid #3c3c3c;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#diagnostics-container {
+  flex: 1;
+  padding: 10px;
+  overflow: auto;
+  border-bottom: 1px solid #3c3c3c;
+}
+
+#diagnostics:empty::after {
+  content: "Run Focus to see diagnostics";
+  color: #808080;
+}
+
+#parent-info-container {
+  flex: 1;
+  padding: 10px;
+  overflow: auto;
+  background: #1e1e1e;
+}
+
+#parent-info:empty::after {
+  content: "Click a parent node to inspect";
+  color: #808080;
+}
+
+.diag-section {
+  margin-bottom: 12px;
+}
+
+.diag-section h3 {
+  font-size: 11px;
+  color: #808080;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.diag-item {
+  padding: 2px 4px;
+  color: #9cdcfe;
+}
+
+.diag-item:hover {
+  background: #2a2d2e;
+}
+
+.diag-item.winner {
+  color: #4ec9b0;
+  font-weight: bold;
+}
+
+.diag-item .diag-meta {
+  color: #6a9955;
+  margin-left: 6px;
+}
+
+.parent-info-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.parent-info-header h3 {
+  font-size: 11px;
+  color: #808080;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.parent-info-close {
+  background: none;
+  border: none;
+  color: #808080;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.parent-info-close:hover {
+  color: #d4d4d4;
+}
+
+.parent-prop {
+  padding: 2px 0;
+}
+
+.parent-prop-name {
+  color: #dcdcaa;
+}
+
+.parent-prop-value {
+  color: #ce9178;
+  margin-left: 4px;
+}
+
+.parent-prop-value.none {
+  color: #808080;
+}
+
+.tree-node {
+  padding-left: 16px;
+}
+
+.tree-node-label {
+  cursor: default;
+  padding: 1px 4px;
+  display: inline-block;
+}
+
+.tree-node-label:hover {
+  background: #2a2d2e;
+}
+
+.tree-parent > .tree-node-label {
+  color: #dcdcaa;
+  cursor: pointer;
+}
+
+.tree-parent.selected > .tree-node-label {
+  background: #264f78;
+}
+
+.tree-leaf > .tree-node-label {
+  color: #9cdcfe;
+  cursor: pointer;
+}
+
+.tree-leaf > .tree-node-label::before {
+  content: "\25C6 ";
+  color: #608b4e;
+}
+
+.tree-node-label .node-meta {
+  color: #6a9955;
+  margin-left: 8px;
+}
+
+.xpath-match > .tree-node-label {
+  background: #613214;
+}
+
+#active-element-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: #252526;
+  border-top: 1px solid #3c3c3c;
+  flex-shrink: 0;
+  min-height: 24px;
+}
+
+.active-label {
+  color: #808080;
+  flex-shrink: 0;
+}
+
+#active-element {
+  color: #9cdcfe;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#active-element:hover {
+  color: #4ec9b0;
+  text-decoration: underline;
+}

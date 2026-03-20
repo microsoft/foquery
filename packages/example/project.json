@@ -1,0 +1,29 @@
+{
+  "name": "example",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "packages/example/src",
+  "projectType": "application",
+  "targets": {
+    "dev": {
+      "command": "vite",
+      "options": {
+        "cwd": "packages/example"
+      }
+    },
+    "build": {
+      "command": "vite build",
+      "options": {
+        "cwd": "packages/example"
+      }
+    },
+    "preview": {
+      "command": "vite preview",
+      "options": {
+        "cwd": "packages/example"
+      }
+    },
+    "lint": {
+      "command": "eslint packages/example/src"
+    }
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "../../dist/packages/foquery-dom"
+  },
+  "include": ["src/**/*.ts"]
+}

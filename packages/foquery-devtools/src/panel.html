@@ -1,0 +1,50 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="panel.css" />
+  </head>
+  <body>
+    <div id="toolbar">
+      <div id="status"></div>
+      <label>
+        Global:
+        <input id="global-name" type="text" value="__FOQUERY_ROOT__" />
+      </label>
+      <button id="connect-btn">Connect</button>
+    </div>
+
+    <div id="xpath-bar">
+      <div id="xpath-status"></div>
+      <div id="xpath-context"></div>
+      <input
+        id="xpath-input"
+        type="text"
+        placeholder="XPath expression (e.g. //main/SelectedItem)"
+      />
+      <div id="xpath-results"></div>
+      <button id="focus-btn" disabled>Focus</button>
+    </div>
+
+    <div id="main-layout">
+      <div id="tree-container">
+        <div id="tree"></div>
+      </div>
+      <div id="sidebar">
+        <div id="diagnostics-container">
+          <div id="diagnostics"></div>
+        </div>
+        <div id="parent-info-container">
+          <div id="parent-info"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="active-element-bar">
+      <span class="active-label">activeElement:</span>
+      <span id="active-element"></span>
+    </div>
+
+    <script type="module" src="./panel.js"></script>
+  </body>
+</html>
