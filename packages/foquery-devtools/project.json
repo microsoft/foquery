@@ -1,0 +1,17 @@
+{
+  "name": "foquery-devtools",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "packages/foquery-devtools/src",
+  "projectType": "application",
+  "targets": {
+    "build": {
+      "command": "node scripts/build-devtools.mjs",
+      "options": {
+        "cwd": "packages/foquery-devtools"
+      }
+    },
+    "lint": {
+      "command": "eslint packages/foquery-devtools/src"
+    }
+  }
+}

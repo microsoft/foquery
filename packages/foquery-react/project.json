@@ -1,0 +1,29 @@
+{
+  "name": "foquery-react",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "packages/foquery-react/src",
+  "projectType": "library",
+  "targets": {
+    "build": {
+      "command": "tsc --project tsconfig.build.json",
+      "options": {
+        "cwd": "packages/foquery-react"
+      }
+    },
+    "typecheck": {
+      "command": "tsc --project tsconfig.json --noEmit",
+      "options": {
+        "cwd": "packages/foquery-react"
+      }
+    },
+    "lint": {
+      "command": "eslint packages/foquery-react/src"
+    },
+    "test": {
+      "command": "vitest run",
+      "options": {
+        "cwd": "packages/foquery-react"
+      }
+    }
+  }
+}

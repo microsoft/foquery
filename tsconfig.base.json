@@ -1,0 +1,24 @@
+{
+  "compileOnSave": false,
+  "compilerOptions": {
+    "rootDir": ".",
+    "sourceMap": true,
+    "declaration": true,
+    "moduleResolution": "node",
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "importHelpers": true,
+    "target": "es2015",
+    "module": "esnext",
+    "lib": ["es2021", "dom"],
+    "skipLibCheck": true,
+    "skipDefaultLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "foquery": ["packages/foquery/src/index.ts"],
+      "foquery-react": ["packages/foquery-react/src/index.ts"],
+      "foquery-dom": ["packages/foquery-dom/src/index.ts"]
+    }
+  },
+  "exclude": ["node_modules", "tmp"]
+}

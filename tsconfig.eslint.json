@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react"
+  },
+  "include": [
+    "packages/foquery/src/**/*.ts",
+    "packages/foquery-react/src/**/*.ts",
+    "packages/foquery-react/src/**/*.tsx",
+    "packages/foquery-dom/src/**/*.ts",
+    "packages/foquery-devtools/src/**/*.ts",
+    "packages/example/src/**/*.ts",
+    "packages/example/src/**/*.tsx"
+  ]
+}
