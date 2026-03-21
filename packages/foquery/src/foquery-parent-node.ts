@@ -7,7 +7,7 @@ import { FoQueryLeafNode } from "./foquery-leaf-node";
 import { FoQueryRequest } from "./foquery-request";
 import { evaluateXPath } from "./xpath-eval";
 
-export class FoQueryParentNode {
+export class FoQueryParentNode implements Types.FoQueryParentNode {
   private _root: Types.RootNode;
   private _attached = false;
   private _xmlElement: Types.XmlElement;
@@ -33,6 +33,7 @@ export class FoQueryParentNode {
 
     this._xmlElement = xmlElement;
 
+    xmlElement.foQueryParentInst = this;
     xmlElement.foQueryParentNode = this.node = {
       xmlElement,
       name,

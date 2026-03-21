@@ -10,6 +10,12 @@
         "cwd": "packages/foquery-devtools"
       }
     },
+    "test": {
+      "command": "npx playwright test --config playwright.config.ts",
+      "options": {
+        "cwd": "packages/foquery-devtools"
+      }
+    },
     "lint": {
       "command": "eslint packages/foquery-devtools/src"
     }

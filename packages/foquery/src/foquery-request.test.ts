@@ -514,6 +514,55 @@ describe("FoQueryRequest", () => {
     document.body.removeChild(el2);
   });
 
+  // --- Parent axis (..) from child context ---
+
+  it("parent axis (..) focuses parent with string focus from child context", async () => {
+    const rootNode = new FoQueryRootNode();
+
+    const messages = new FoQueryParentNode("messages", rootNode.root, {
+      focus: "./MessageInput",
+    });
+    rootNode.appendParent(messages);
+
+    const compose = new FoQueryParentNode("compose", rootNode.root);
+    messages.appendParent(compose);
+
+    const el = document.createElement("input");
+    document.body.appendChild(el);
+    messages.appendLeaf(new FoQueryLeafNode(["MessageInput"], rootNode.root), el);
+
+    const focusSpy = vi.spyOn(el, "focus");
+
+    // ".." from compose context should match <messages>, which has string focus
+    const request = new FoQueryRequest("..", compose.node);
+    const status = await request.promise;
+
+    expect(status).toBe(RequestStatus.Succeeded);
+    expect(focusSpy).toHaveBeenCalled();
+    expect(request.diagnostics!.matchedElements.length).toBe(1);
+    expect(request.diagnostics!.candidates.length).toBe(1);
+    document.body.removeChild(el);
+  });
+
+  it("parent axis (..) resolves NoCandidates when parent has no focus", async () => {
+    const rootNode = new FoQueryRootNode();
+
+    const messages = new FoQueryParentNode("messages", rootNode.root);
+    rootNode.appendParent(messages);
+
+    const compose = new FoQueryParentNode("compose", rootNode.root);
+    messages.appendParent(compose);
+
+    // ".." from compose matches <messages>, but messages has no focus property
+    // so it should not be a candidate
+    const request = new FoQueryRequest("..", compose.node);
+    const status = await request.promise;
+
+    expect(status).toBe(RequestStatus.NoCandidates);
+    expect(request.diagnostics!.matchedElements.length).toBe(1);
+    expect(request.diagnostics!.candidates.length).toBe(0);
+  });
+
   // --- Parent-bound with string focus ---
 
   it("parent-bound request resolves via parent string focus", async () => {

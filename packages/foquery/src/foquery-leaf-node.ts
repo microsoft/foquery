@@ -4,7 +4,7 @@
  */
 import * as Types from "./types";
 
-export class FoQueryLeafNode {
+export class FoQueryLeafNode implements Types.FoQueryLeafNode {
   private _root: Types.RootNode;
   private _parent: Types.ParentNode | undefined;
   private _element: HTMLElement | undefined;

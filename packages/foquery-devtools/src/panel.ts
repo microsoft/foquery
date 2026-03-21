@@ -2,6 +2,13 @@
  * Copyright (c) Microsoft Corporation. All rights reserved.
  * Licensed under the MIT License.
  */
+import {
+  serializeTreeExpression,
+  queryXPathExpression,
+  focusExpression,
+  pendingFocusExpression,
+} from "./expressions.js";
+
 const statusEl = document.getElementById("status")!;
 const globalNameInput = document.getElementById("global-name") as HTMLInputElement;
 const connectBtn = document.getElementById("connect-btn")!;
@@ -20,6 +27,7 @@ let queryDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 let lastQueryMatchKeys: Set<string> = new Set();
 let lastQueryValid = false;
 let selectedParentName: string | null = null;
+let selectedParentIndex: number | null = null;
 
 const HIGHLIGHT_KEY = "__FOQUERY_DEVTOOLS_HIGHLIGHT__";
 
@@ -39,6 +47,7 @@ interface SerializedNode {
   name: string;
   lastFocused?: number;
   leafIndex?: number;
+  parentIndex?: number;
   hasFocus?: boolean;
   focusType?: string;
   hasArbiter?: boolean;
@@ -52,11 +61,21 @@ interface DiagEl {
   leafIndex?: number;
 }
 
+interface ProgressiveStep {
+  xpath: string;
+  matched: boolean;
+  timestamp: number;
+  degraded?: boolean;
+}
+
 interface DiagnosticsResult {
   matched: DiagEl[];
   candidates: DiagEl[];
   winner: DiagEl | null;
   status: string;
+  startedAt?: number;
+  resolvedAt?: number;
+  progressiveMatches?: ProgressiveStep[];
 }
 
 interface ActiveElementInfo {
@@ -66,170 +85,7 @@ interface ActiveElementInfo {
   text?: string;
 }
 
-// --- Page expressions ---
-
-function serializeTreeExpression(globalName: string): string {
-  return `(function() {
-    var inst = window["${globalName}"];
-    if (!inst) return null;
-    var root = inst.root;
-    var leafIdx = 0;
-
-    function serializeParent(node) {
-      var focusType = null;
-      if (typeof node.focus === "function") focusType = "function";
-      else if (typeof node.focus === "string") focusType = node.focus;
-
-      var result = {
-        type: "parent",
-        name: node.name,
-        lastFocused: node.lastFocused,
-        hasFocus: node.focus !== undefined,
-        focusType: focusType,
-        hasArbiter: !!node.arbiter
-      };
-      var children = [];
-
-      node.children.forEach(function(child) {
-        children.push(serializeParent(child));
-      });
-
-      node.leafs.forEach(function(leaf) {
-        children.push({
-          type: "leaf",
-          name: leaf.names.join(", "),
-          lastFocused: leaf.lastFocused,
-          leafIndex: leafIdx++
-        });
-      });
-
-      result.children = children;
-      return result;
-    }
-
-    return serializeParent(root);
-  })()`;
-}
-
-function buildLeafIndexMapSnippet(globalName: string): string {
-  return `
-    var leafIndexMap = new Map();
-    var idx = 0;
-    function indexLeafs(node) {
-      node.children.forEach(function(child) { indexLeafs(child); });
-      node.leafs.forEach(function(leaf) {
-        leaf.xmlElements.forEach(function(xmlEl) { leafIndexMap.set(xmlEl, idx); });
-        idx++;
-      });
-    }
-    indexLeafs(window["${globalName}"].root);
-  `;
-}
-
-function serializeElSnippet(): string {
-  return `
-    function serializeEl(el) {
-      if (el.foQueryLeafNode) {
-        return { type: "leaf", name: el.foQueryLeafNode.names.join(", "), lastFocused: el.foQueryLeafNode.lastFocused, leafIndex: leafIndexMap.get(el) };
-      } else if (el.foQueryParentNode) {
-        return { type: "parent", name: el.foQueryParentNode.name, lastFocused: el.foQueryParentNode.lastFocused };
-      }
-      return { type: "unknown", name: el.tagName };
-    }
-  `;
-}
-
-function findParentSnippet(globalName: string, parentName: string): string {
-  return `
-    var contextNode = null;
-    function findParent(node) {
-      if (node.name === ${JSON.stringify(parentName)}) { contextNode = node; return; }
-      node.children.forEach(function(child) { findParent(child); });
-    }
-    findParent(window["${globalName}"].root);
-  `;
-}
-
-function queryXPathExpression(
-  globalName: string,
-  xpath: string,
-  parentName: string | null,
-): string {
-  const contextSetup = parentName
-    ? findParentSnippet(globalName, parentName) +
-      "if (!contextNode) return { error: false, results: [] };"
-    : "var contextNode = null;";
-
-  return `(function() {
-    var inst = window["${globalName}"];
-    if (!inst || !inst.root) return { error: false, results: [] };
-    var root = inst.root;
-    var xmlDoc = root.xmlDoc;
-
-    function evalXPath(xpath, ctx) {
-      var r = xmlDoc.evaluate(xpath, ctx, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
-      var els = [];
-      for (var i = 0; i < r.snapshotLength; i++) { var n = r.snapshotItem(i); if (n instanceof Element) els.push(n); }
-      return els;
-    }
-
-    try {
-      ${buildLeafIndexMapSnippet(globalName)}
-      ${contextSetup}
-
-      var ctxEl = contextNode ? contextNode.xmlElement : xmlDoc;
-      var results = evalXPath(${JSON.stringify(xpath)}, ctxEl);
-      return {
-        error: false,
-        results: results.map(function(el) {
-          if (el.foQueryLeafNode) {
-            return { type: "leaf", name: el.foQueryLeafNode.names.join(", "), leafIndex: leafIndexMap.get(el) };
-          } else if (el.foQueryParentNode) {
-            return { type: "parent", name: el.foQueryParentNode.name };
-          }
-          return { type: "unknown", name: el.tagName };
-        })
-      };
-    } catch (e) {
-      return { error: true, results: [] };
-    }
-  })()`;
-}
-
-function focusExpression(globalName: string, xpath: string): string {
-  return `(function() {
-    var inst = window["${globalName}"];
-    if (!inst || !inst.requestFocus) return null;
-    var root = inst.root;
-
-    ${buildLeafIndexMapSnippet(globalName)}
-    ${serializeElSnippet()}
-
-    var req = inst.requestFocus(${JSON.stringify(xpath)});
-    var diag = req.diagnostics;
-    if (!diag) return { matched: [], candidates: [], winner: null, status: "waiting" };
-
-    // When the page window is not OS-focused, el.focus() is a no-op and
-    // focusin does not fire. Manually dispatch focusin so onFocusIn handler
-    // updates lastFocused timestamps.
-    if (diag.winner && diag.winner.foQueryLeafNode) {
-      var winnerEl = diag.winner.foQueryLeafNode.element.deref();
-      if (winnerEl) {
-        winnerEl.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
-      }
-    }
-
-    // Read diagnostics after focusin dispatch so lastFocused is up to date
-    var finalDiag = req.diagnostics;
-
-    return {
-      matched: finalDiag.matchedElements.map(serializeEl),
-      candidates: finalDiag.candidates.map(serializeEl),
-      winner: finalDiag.winner ? serializeEl(finalDiag.winner) : null,
-      status: req.status === 2 ? "succeeded" : req.status === 3 ? "canceled" : req.status === 5 ? "no candidates" : "waiting"
-    };
-  })()`;
-}
+// --- Page expressions (remaining, not in expressions.ts) ---
 
 function activeElementExpression(): string {
   return `(function() {
@@ -340,8 +196,11 @@ function renderTree(node: SerializedNode, container: HTMLElement): void {
       ? `leaf:${node.leafIndex}`
       : `parent:${node.name}`;
   div.setAttribute("data-match-key", matchKey);
+  if (node.parentIndex !== undefined) {
+    div.setAttribute("data-parent-index", String(node.parentIndex));
+  }
 
-  if (node.type === "parent" && node.name === selectedParentName) {
+  if (node.type === "parent" && node.parentIndex === selectedParentIndex) {
     div.classList.add("selected");
   }
 
@@ -374,7 +233,8 @@ function renderTree(node: SerializedNode, container: HTMLElement): void {
 
   if (node.type === "parent") {
     label.addEventListener("click", () => {
-      selectParent(selectedParentName === node.name ? null : node.name, node);
+      const deselecting = selectedParentIndex === node.parentIndex;
+      selectParent(deselecting ? null : node.name, deselecting ? undefined : node);
     });
   }
 
@@ -404,18 +264,27 @@ function applyHighlights(): void {
 
 function applyParentSelection(): void {
   treeEl.querySelectorAll(".tree-parent.selected").forEach((el) => el.classList.remove("selected"));
-  if (!selectedParentName) return;
-  treeEl
-    .querySelectorAll(`.tree-parent[data-match-key="parent:${selectedParentName}"]`)
-    .forEach((el) => {
-      el.classList.add("selected");
-    });
+  if (selectedParentIndex === null) return;
+  const el = treeEl.querySelector(`.tree-parent[data-parent-index="${selectedParentIndex}"]`);
+  if (el) el.classList.add("selected");
+}
+
+function findSerializedNode(node: SerializedNode, parentIndex: number): SerializedNode | undefined {
+  if (node.parentIndex === parentIndex) return node;
+  if (node.children) {
+    for (const child of node.children) {
+      const found = findSerializedNode(child, parentIndex);
+      if (found) return found;
+    }
+  }
+  return undefined;
 }
 
 // --- Parent selection ---
 
 function selectParent(name: string | null, node?: SerializedNode): void {
   selectedParentName = name;
+  selectedParentIndex = node?.parentIndex ?? null;
   applyParentSelection();
   renderParentInfo(name ? (node ?? null) : null);
   updateContextLabel();
@@ -531,13 +400,34 @@ function createDiagItem(el: DiagEl, extraClass?: string): HTMLElement {
 function renderDiagnostics(diag: DiagnosticsResult): void {
   diagnosticsEl.innerHTML = "";
 
+  // Status + elapsed time
   const statusSection = createDiagSection("Status");
   const statusItem = document.createElement("div");
   statusItem.className = "diag-item";
-  statusItem.textContent = diag.status;
+  if (diag.startedAt) {
+    const elapsed = (diag.resolvedAt ?? Date.now()) - diag.startedAt;
+    statusItem.textContent = `${diag.status} (${elapsed}ms)`;
+  } else {
+    statusItem.textContent = diag.status;
+  }
   statusItem.style.color = diag.status === "succeeded" ? "#4ec9b0" : "#f44747";
   statusSection.appendChild(statusItem);
   diagnosticsEl.appendChild(statusSection);
+
+  // Progressive matches
+  if (diag.progressiveMatches && diag.progressiveMatches.length > 0) {
+    const progressSection = createDiagSection("Progressive");
+    for (const step of diag.progressiveMatches) {
+      const stepItem = document.createElement("div");
+      stepItem.className = "diag-item";
+      const elapsed = diag.startedAt ? step.timestamp - diag.startedAt : 0;
+      const label = step.matched ? (step.degraded ? "degraded" : "partial match") : "lost match";
+      stepItem.textContent = `${label}: ${step.xpath || "—"} (+${elapsed}ms)`;
+      stepItem.style.color = step.degraded ? "#f44747" : "#808080";
+      progressSection.appendChild(stepItem);
+    }
+    diagnosticsEl.appendChild(progressSection);
+  }
 
   const matchedSection = createDiagSection(`Matched (${diag.matched.length})`);
   for (const el of diag.matched) matchedSection.appendChild(createDiagItem(el));
@@ -600,6 +490,21 @@ async function refreshTree(): Promise<void> {
       treeEl.innerHTML = "";
       renderTree(tree, treeEl);
       applyHighlights();
+
+      // Re-run query to reflect tree changes
+      if (xpathInput.value.trim()) {
+        void runQuery();
+      }
+
+      // Update or clear selection based on whether the selected parent still exists
+      if (selectedParentIndex !== null) {
+        const selectedNode = findSerializedNode(tree, selectedParentIndex);
+        if (selectedNode) {
+          renderParentInfo(selectedNode);
+        } else {
+          selectParent(null);
+        }
+      }
     } else {
       statusEl.className = "";
       treeEl.innerHTML = '<span style="color:#808080">No FoQuery root found</span>';
@@ -609,6 +514,17 @@ async function refreshTree(): Promise<void> {
     treeEl.innerHTML = '<span style="color:#f44747">Error connecting</span>';
   }
   await refreshActiveElement();
+  await checkPendingFocus();
+}
+
+async function checkPendingFocus(): Promise<void> {
+  const globalName = globalNameInput.value;
+  try {
+    const diag = (await evalInPage(pendingFocusExpression(globalName))) as DiagnosticsResult | null;
+    if (diag) renderDiagnostics(diag);
+  } catch {
+    // Pending request not yet resolved or error — ignore
+  }
 }
 
 async function runQuery(): Promise<void> {
@@ -628,7 +544,7 @@ async function runQuery(): Promise<void> {
 
   try {
     const response = (await evalInPage(
-      queryXPathExpression(globalName, xpath, selectedParentName),
+      queryXPathExpression(globalName, xpath, selectedParentIndex),
     )) as {
       error: boolean;
       results: { type: string; name: string; leafIndex?: number }[];
@@ -674,7 +590,9 @@ async function runFocus(): Promise<void> {
   if (!xpath || !lastQueryValid) return;
 
   try {
-    const diag = (await evalInPage(focusExpression(globalName, xpath))) as DiagnosticsResult | null;
+    const diag = (await evalInPage(
+      focusExpression(globalName, xpath, selectedParentIndex),
+    )) as DiagnosticsResult | null;
     if (diag) renderDiagnostics(diag);
 
     await refreshTree();
