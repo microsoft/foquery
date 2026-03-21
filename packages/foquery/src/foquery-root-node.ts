@@ -8,7 +8,7 @@ import { FoQueryLeafNode } from "./foquery-leaf-node";
 import { FoQueryRequest } from "./foquery-request";
 import { evaluateXPath } from "./xpath-eval";
 
-export class FoQueryRootNode {
+export class FoQueryRootNode implements Types.FoQueryRootNode {
   private _subscriptions: Set<
     (parentOrLeaf: Types.ParentNode | Types.LeafNode, removed?: boolean) => void
   > = new Set();

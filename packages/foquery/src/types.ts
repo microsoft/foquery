@@ -33,11 +33,39 @@ export interface RootNode extends ParentNode {
 
 export interface XmlElement extends Element {
   foQueryParentNode?: ParentNode;
+  foQueryParentInst?: FoQueryParentNode;
   foQueryLeafNode?: LeafNode;
 }
 
 export interface RequestFocusOptions {
   timeout?: number;
+}
+
+export interface FoQueryParentNode {
+  readonly node: ParentNode;
+  readonly xmlElement: Element;
+  appendParent(child: FoQueryParentNode): void;
+  appendLeaf(leaf: FoQueryLeafNode, element: HTMLElement): void;
+  query(xpath: string): XmlElement[];
+  requestFocus(xpath: string, options?: RequestFocusOptions): Request;
+  rename(name: string): void;
+  remove(): void;
+}
+
+export interface FoQueryLeafNode {
+  readonly leaf: LeafNode;
+  readonly onFocusIn: () => void;
+  rename(names: string[]): void;
+  remove(): void;
+}
+
+export interface FoQueryRootNode {
+  readonly root: RootNode;
+  dispose(): void;
+  appendParent(child: FoQueryParentNode): void;
+  appendLeaf(leaf: FoQueryLeafNode, element: HTMLElement): void;
+  query(xpath: string): XmlElement[];
+  requestFocus(xpath: string, options?: RequestFocusOptions): Request;
 }
 
 declare global {
