@@ -35,7 +35,7 @@ describe("FoQueryParent", () => {
 
     flushSync(() => {
       root.render(
-        <FoQueryProvider>
+        <FoQueryProvider window={window}>
           <RootInspector />
         </FoQueryProvider>,
       );
@@ -72,7 +72,7 @@ describe("FoQueryParent", () => {
 
     flushSync(() => {
       root.render(
-        <FoQueryProvider>
+        <FoQueryProvider window={window}>
           <RootCapture />
         </FoQueryProvider>,
       );
@@ -110,7 +110,7 @@ describe("FoQueryParent", () => {
 
     flushSync(() => {
       root.render(
-        <FoQueryProvider>
+        <FoQueryProvider window={window}>
           <RootCapture />
         </FoQueryProvider>,
       );
@@ -141,7 +141,7 @@ describe("FoQueryParent", () => {
 
     flushSync(() => {
       root.render(
-        <FoQueryProvider>
+        <FoQueryProvider window={window}>
           <RootCapture show={true} />
         </FoQueryProvider>,
       );
@@ -151,7 +151,7 @@ describe("FoQueryParent", () => {
 
     flushSync(() => {
       root.render(
-        <FoQueryProvider>
+        <FoQueryProvider window={window}>
           <RootCapture show={false} />
         </FoQueryProvider>,
       );
@@ -182,7 +182,7 @@ describe("FoQueryParent", () => {
 
     flushSync(() => {
       root.render(
-        <FoQueryProvider>
+        <FoQueryProvider window={window}>
           <RootCapture name="header" />
         </FoQueryProvider>,
       );
@@ -193,7 +193,7 @@ describe("FoQueryParent", () => {
 
     flushSync(() => {
       root.render(
-        <FoQueryProvider>
+        <FoQueryProvider window={window}>
           <RootCapture name="sidebar" />
         </FoQueryProvider>,
       );
@@ -227,7 +227,7 @@ describe("FoQueryParent", () => {
     flushSync(() => {
       root.render(
         <React.StrictMode>
-          <FoQueryProvider>
+          <FoQueryProvider window={window}>
             <RootCapture />
           </FoQueryProvider>
         </React.StrictMode>,
@@ -267,7 +267,7 @@ describe("FoQueryParent", () => {
     flushSync(() => {
       root.render(
         <React.StrictMode>
-          <FoQueryProvider>
+          <FoQueryProvider window={window}>
             <RootCapture show={true} />
           </FoQueryProvider>
         </React.StrictMode>,
@@ -279,7 +279,7 @@ describe("FoQueryParent", () => {
     flushSync(() => {
       root.render(
         <React.StrictMode>
-          <FoQueryProvider>
+          <FoQueryProvider window={window}>
             <RootCapture show={false} />
           </FoQueryProvider>
         </React.StrictMode>,
@@ -292,7 +292,7 @@ describe("FoQueryParent", () => {
     flushSync(() => {
       root.render(
         <React.StrictMode>
-          <FoQueryProvider>
+          <FoQueryProvider window={window}>
             <RootCapture show={true} />
           </FoQueryProvider>
         </React.StrictMode>,
@@ -323,7 +323,7 @@ describe("FoQueryParent", () => {
 
     flushSync(() => {
       root.render(
-        <FoQueryProvider>
+        <FoQueryProvider window={window}>
           <RootCapture />
         </FoQueryProvider>,
       );

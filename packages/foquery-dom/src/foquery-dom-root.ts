@@ -18,8 +18,12 @@ export class FoQueryDOMRoot {
   public readonly root: Types.RootNode;
 
   constructor(element: HTMLElement, rootName?: string) {
+    const win = element.ownerDocument.defaultView;
+    if (!win) {
+      throw new Error("FoQueryDOMRoot: element must be attached to a document with a window");
+    }
     this._element = element;
-    this._rootNode = new FoQueryRootNode(rootName);
+    this._rootNode = new FoQueryRootNode(win, rootName);
     this.root = this._rootNode.root;
 
     element.setAttribute(ROOT_ATTR, rootName ?? "Root");

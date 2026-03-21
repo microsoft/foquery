@@ -171,13 +171,6 @@ export function focusExpression(
     // Read diagnostics after focusin dispatch so lastFocused is up to date
     var finalDiag = req.diagnostics;
 
-    // Store pending request so the panel can poll for resolution
-    if (req.status === 1) {
-      window.__FOQUERY_PENDING_REQUEST__ = req;
-    } else {
-      window.__FOQUERY_PENDING_REQUEST__ = undefined;
-    }
-
     return {
       matched: finalDiag.matchedElements.map(serializeEl),
       candidates: finalDiag.candidates.map(serializeEl),
@@ -212,9 +205,9 @@ function serializeDiagSnippet(): string {
   `;
 }
 
-export function pendingFocusExpression(globalName: string): string {
+export function activeRequestExpression(globalName: string): string {
   return `(function() {
-    var req = window.__FOQUERY_PENDING_REQUEST__;
+    var req = window.__FOQUERY_ACTIVE_REQUEST__;
     if (!req) return null;
 
     var inst = window["${globalName}"];
@@ -224,19 +217,14 @@ export function pendingFocusExpression(globalName: string): string {
     ${serializeElSnippet()}
     ${serializeDiagSnippet()}
 
-    // Still waiting — return progress
-    if (req.status === 1) {
-      return serializeDiag(req);
-    }
-
-    // Resolved — clear pending and dispatch focusin
-    window.__FOQUERY_PENDING_REQUEST__ = undefined;
-
-    var diag = req.diagnostics;
-    if (diag && diag.winner && diag.winner.foQueryLeafNode) {
-      var winnerEl = diag.winner.foQueryLeafNode.element.deref();
-      if (winnerEl) {
-        winnerEl.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    // If resolved, dispatch focusin for the winner (page may not be OS-focused)
+    if (req.status !== 1) {
+      var diag = req.diagnostics;
+      if (diag && diag.winner && diag.winner.foQueryLeafNode) {
+        var winnerEl = diag.winner.foQueryLeafNode.element.deref();
+        if (winnerEl) {
+          winnerEl.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+        }
       }
     }
 

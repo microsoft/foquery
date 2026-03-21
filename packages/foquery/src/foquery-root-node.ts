@@ -18,6 +18,7 @@ export class FoQueryRootNode implements Types.FoQueryRootNode {
   private _devtoolsGlobalName: string | undefined;
 
   constructor(
+    win: Window & typeof globalThis,
     rootName: string = "Root",
     options?: {
       arbiter?: (candidates: Types.XmlElement[]) => Types.XmlElement;
@@ -25,9 +26,10 @@ export class FoQueryRootNode implements Types.FoQueryRootNode {
     },
   ) {
     const arbiter = options?.arbiter;
-    const xmlDoc = document.implementation.createDocument(null, rootName);
+    const xmlDoc = win.document.implementation.createDocument(null, rootName);
 
     this.root = {
+      window: win,
       xmlDoc,
       xmlElement: xmlDoc.documentElement,
       name: rootName,
@@ -57,13 +59,14 @@ export class FoQueryRootNode implements Types.FoQueryRootNode {
     if (options?.devtools) {
       this._devtoolsGlobalName =
         typeof options.devtools === "string" ? options.devtools : "__FOQUERY_ROOT__";
-      (globalThis as Record<string, unknown>)[this._devtoolsGlobalName] = this;
+      this.root.devtools = true;
+      (win as unknown as Record<string, unknown>)[this._devtoolsGlobalName] = this;
     }
   }
 
   public dispose(): void {
     if (this._devtoolsGlobalName) {
-      delete (globalThis as Record<string, unknown>)[this._devtoolsGlobalName];
+      delete (this.root.window as unknown as Record<string, unknown>)[this._devtoolsGlobalName];
     }
   }
 

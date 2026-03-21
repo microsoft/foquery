@@ -7,7 +7,7 @@ import { FoQueryRootNode } from "./foquery-root-node";
 
 describe("FoQueryRootNode", () => {
   it("creates a root node with default name", () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
     const root = rootNode.root;
 
     expect(root.name).toBe("Root");
@@ -20,13 +20,13 @@ describe("FoQueryRootNode", () => {
   });
 
   it("creates a root node with custom name", () => {
-    const rootNode = new FoQueryRootNode("App");
+    const rootNode = new FoQueryRootNode(window, "App");
     expect(rootNode.root.name).toBe("App");
     expect(rootNode.root.xmlElement.tagName).toBe("App");
   });
 
   it("subscribe returns an unsubscribe function", () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
     const callback = vi.fn();
 
     const unsubscribe = rootNode.root.subscribe(callback);
@@ -42,7 +42,7 @@ describe("FoQueryRootNode", () => {
   });
 
   it("notify forwards removed flag to subscribers", () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
     const callback = vi.fn();
 
     rootNode.root.subscribe(callback);
@@ -52,7 +52,7 @@ describe("FoQueryRootNode", () => {
   });
 
   it("supports multiple subscribers", () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
     const cb1 = vi.fn();
     const cb2 = vi.fn();
 
@@ -66,32 +66,32 @@ describe("FoQueryRootNode", () => {
   });
 
   it("devtools option exposes root as global variable", () => {
-    const rootNode = new FoQueryRootNode("Root", { devtools: "__TEST_ROOT__" });
+    const rootNode = new FoQueryRootNode(window, "Root", { devtools: "__TEST_ROOT__" });
 
-    expect((globalThis as Record<string, unknown>)["__TEST_ROOT__"]).toBe(rootNode);
+    expect((window as unknown as Record<string, unknown>)["__TEST_ROOT__"]).toBe(rootNode);
 
     rootNode.dispose();
 
-    expect((globalThis as Record<string, unknown>)["__TEST_ROOT__"]).toBeUndefined();
+    expect((window as unknown as Record<string, unknown>)["__TEST_ROOT__"]).toBeUndefined();
   });
 
   it("devtools option with true uses default global name", () => {
-    const rootNode = new FoQueryRootNode("Root", { devtools: true });
+    const rootNode = new FoQueryRootNode(window, "Root", { devtools: true });
 
-    expect(globalThis.__FOQUERY_ROOT__).toBe(rootNode);
+    expect((window as unknown as Record<string, unknown>).__FOQUERY_ROOT__).toBe(rootNode);
 
     rootNode.dispose();
 
-    expect(globalThis.__FOQUERY_ROOT__).toBeUndefined();
+    expect((window as unknown as Record<string, unknown>).__FOQUERY_ROOT__).toBeUndefined();
   });
 
   it("rootNode.requestFocus is a function", () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
     expect(typeof rootNode.requestFocus).toBe("function");
   });
 
   it("root.query is a function", () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
     expect(typeof rootNode.query).toBe("function");
     expect(rootNode.query("//nonexistent").length).toBe(0);
   });
