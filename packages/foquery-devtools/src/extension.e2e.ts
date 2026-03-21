@@ -369,10 +369,14 @@ test.describe("devtools panel UI against live example app", () => {
       const initialStatus = await panel.textContent("#diagnostics .diag-section .diag-item");
       expect(initialStatus).toContain("waiting");
 
-      // Now add a panel in the example app
+      // Add a panel in the app. The mousedown will cancel the pending request,
+      // so after clicking we issue a new requestFocus via the devtools Focus button.
       await app.click("text=Add Panel");
 
-      // The focus should resolve — diagnostics should update to "succeeded"
+      // The click canceled the request — re-trigger focus now that the panel exists
+      await panel.click("#focus-btn");
+
+      // The focus should now resolve immediately since the panel exists
       await panel.waitForFunction(
         () => {
           const items = document.querySelectorAll("#diagnostics .diag-section .diag-item");
@@ -424,8 +428,12 @@ test.describe("devtools panel UI against live example app", () => {
       expect(waitingStatus).toContain("waiting");
       expect(waitingStatus).toMatch(/\(\d+ms\)/);
 
-      // Now add the panel — the focus should resolve
+      // Add a panel in the app. The mousedown will cancel the pending request,
+      // so after clicking we issue a new requestFocus via the devtools Focus button.
       await app.click("text=Add Panel");
+
+      // The click canceled the request — re-trigger focus now that the panel exists
+      await panel.click("#focus-btn");
 
       // Wait for diagnostics to update to succeeded
       await panel.waitForFunction(
@@ -441,6 +449,31 @@ test.describe("devtools panel UI against live example app", () => {
       expect(finalStatus).toContain("succeeded");
       // Final status should show total elapsed time
       expect(finalStatus).toMatch(/\(\d+ms\)/);
+    });
+  });
+
+  test.describe("app-triggered requests", () => {
+    test("diagnostics panel shows status of app-triggered requestFocus", async () => {
+      // Trigger a requestFocus from the app (not from devtools Focus button)
+      await app.evaluate(() => {
+        const root = (window as unknown as Record<string, unknown>).__FOQUERY_ROOT__ as {
+          requestFocus: (xpath: string) => unknown;
+        };
+        root.requestFocus("//header/SelectedItem");
+      });
+
+      // The devtools should pick up the active request on the next poll
+      await panel.waitForFunction(
+        () => {
+          const items = document.querySelectorAll("#diagnostics .diag-section .diag-item");
+          return items.length > 0 && items[0].textContent?.startsWith("succeeded");
+        },
+        undefined,
+        { timeout: 5000 },
+      );
+
+      const statusText = await panel.textContent("#diagnostics .diag-section .diag-item");
+      expect(statusText).toContain("succeeded");
     });
   });
 

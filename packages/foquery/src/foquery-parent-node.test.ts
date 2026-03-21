@@ -9,7 +9,7 @@ import { FoQueryLeafNode } from "./foquery-leaf-node";
 
 describe("FoQueryParentNode", () => {
   it("creates a parent node with correct XML element", () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
     const parent = new FoQueryParentNode("header", rootNode.root);
 
     expect(parent.node.name).toBe("header");
@@ -21,7 +21,7 @@ describe("FoQueryParentNode", () => {
   });
 
   it("appends to a parent node", () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
     const parent = new FoQueryParentNode("header", rootNode.root);
 
     rootNode.appendParent(parent);
@@ -32,7 +32,7 @@ describe("FoQueryParentNode", () => {
   });
 
   it("removes from parent node", () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
     const parent = new FoQueryParentNode("header", rootNode.root);
 
     rootNode.appendParent(parent);
@@ -44,7 +44,7 @@ describe("FoQueryParentNode", () => {
   });
 
   it("builds a nested tree via appendParent", () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
 
     const header = new FoQueryParentNode("header", rootNode.root);
     const nav = new FoQueryParentNode("nav", rootNode.root);
@@ -71,7 +71,7 @@ describe("FoQueryParentNode", () => {
   });
 
   it("removing a mid-tree node removes it and its XML subtree", () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
 
     const header = new FoQueryParentNode("header", rootNode.root);
     const nav = new FoQueryParentNode("nav", rootNode.root);
@@ -85,7 +85,7 @@ describe("FoQueryParentNode", () => {
   });
 
   it("renames a parent node and updates the XML element", () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
 
     const header = new FoQueryParentNode("header", rootNode.root);
     rootNode.appendParent(header);
@@ -113,7 +113,7 @@ describe("FoQueryParentNode", () => {
   });
 
   it("rename is a no-op when name is unchanged", () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
 
     const header = new FoQueryParentNode("header", rootNode.root);
     rootNode.appendParent(header);

@@ -270,7 +270,7 @@ function InnerApp() {
 
 export function App() {
   return (
-    <FoQueryProvider rootName="Root" devtools>
+    <FoQueryProvider window={window} rootName="Root" devtools>
       <InnerApp />
     </FoQueryProvider>
   );

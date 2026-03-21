@@ -22,6 +22,8 @@ export class FoQueryRequest implements Types.Request {
   private _pendingBestXpath = "";
   private _timeoutId: ReturnType<typeof setTimeout> | undefined;
   private _unsubscribe: (() => void) | undefined;
+  private _cancelOnInteraction: (() => void) | undefined;
+  private _markOwnFocus: (() => void) | undefined;
 
   public readonly xpath: string;
   public readonly promise: Promise<Types.RequestStatus>;
@@ -43,6 +45,11 @@ export class FoQueryRequest implements Types.Request {
       _activeRequest.cancel();
     }
     _activeRequest = this; // eslint-disable-line @typescript-eslint/no-this-alias
+
+    // Expose active request for devtools polling
+    if (this._root.devtools) {
+      (this._root.window as unknown as Record<string, unknown>).__FOQUERY_ACTIVE_REQUEST__ = this;
+    }
 
     this._unsubscribe = this._root.subscribe(() => {
       this._matchPath();
@@ -69,6 +76,26 @@ export class FoQueryRequest implements Types.Request {
       }, options.timeout);
     }
 
+    // Cancel on user interaction (click or focus movement not caused by this request)
+    const doc = this._root.window.document;
+    let ownFocus = false;
+    const cancelHandler = () => {
+      if (ownFocus) {
+        ownFocus = false;
+        return;
+      }
+      this._resolve?.(RequestStatus.Canceled);
+    };
+    this._markOwnFocus = () => {
+      ownFocus = true;
+    };
+    doc.addEventListener("focusin", cancelHandler, true);
+    doc.addEventListener("mousedown", cancelHandler, true);
+    this._cancelOnInteraction = () => {
+      doc.removeEventListener("focusin", cancelHandler, true);
+      doc.removeEventListener("mousedown", cancelHandler, true);
+    };
+
     this._matchPath();
   }
 
@@ -79,6 +106,10 @@ export class FoQueryRequest implements Types.Request {
   private _cleanup(): void {
     this._unsubscribe?.();
     this._unsubscribe = undefined;
+
+    this._cancelOnInteraction?.();
+    this._cancelOnInteraction = undefined;
+    this._markOwnFocus = undefined;
 
     if (this._timeoutId !== undefined) {
       clearTimeout(this._timeoutId);
@@ -302,6 +333,7 @@ export class FoQueryRequest implements Types.Request {
   private _focusElement(ref: WeakRef<HTMLElement> | undefined): void {
     const el = ref?.deref();
     if (el) {
+      this._markOwnFocus?.();
       el.focus({ focusVisible: true } as FocusOptions);
       this._resolve?.(RequestStatus.Succeeded);
     }

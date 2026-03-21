@@ -24,7 +24,7 @@ describe("FoQueryProvider", () => {
 
     flushSync(() => {
       root.render(
-        <FoQueryProvider>
+        <FoQueryProvider window={window}>
           <Consumer />
         </FoQueryProvider>,
       );
@@ -56,7 +56,7 @@ describe("FoQueryProvider", () => {
 
     flushSync(() => {
       root.render(
-        <FoQueryProvider rootName="App">
+        <FoQueryProvider window={window} rootName="App">
           <Consumer />
         </FoQueryProvider>,
       );

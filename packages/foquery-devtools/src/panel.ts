@@ -6,7 +6,7 @@ import {
   serializeTreeExpression,
   queryXPathExpression,
   focusExpression,
-  pendingFocusExpression,
+  activeRequestExpression,
 } from "./expressions.js";
 
 const statusEl = document.getElementById("status")!;
@@ -514,16 +514,18 @@ async function refreshTree(): Promise<void> {
     treeEl.innerHTML = '<span style="color:#f44747">Error connecting</span>';
   }
   await refreshActiveElement();
-  await checkPendingFocus();
+  await checkActiveRequest();
 }
 
-async function checkPendingFocus(): Promise<void> {
+async function checkActiveRequest(): Promise<void> {
   const globalName = globalNameInput.value;
   try {
-    const diag = (await evalInPage(pendingFocusExpression(globalName))) as DiagnosticsResult | null;
+    const diag = (await evalInPage(
+      activeRequestExpression(globalName),
+    )) as DiagnosticsResult | null;
     if (diag) renderDiagnostics(diag);
   } catch {
-    // Pending request not yet resolved or error — ignore
+    // No active request or error — ignore
   }
 }
 

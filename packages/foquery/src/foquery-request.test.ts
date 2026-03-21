@@ -12,7 +12,7 @@ import type * as Types from "./types";
 
 describe("FoQueryRequest", () => {
   it("focuses a leaf matched by xpath", async () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
     const main = new FoQueryParentNode("main", rootNode.root);
     rootNode.appendParent(main);
 
@@ -31,7 +31,7 @@ describe("FoQueryRequest", () => {
   });
 
   it("focuses a leaf with custom focus function", async () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
     const main = new FoQueryParentNode("main", rootNode.root);
     rootNode.appendParent(main);
 
@@ -50,7 +50,7 @@ describe("FoQueryRequest", () => {
   });
 
   it("falls back to element.focus when custom focus returns false", async () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
     const main = new FoQueryParentNode("main", rootNode.root);
     rootNode.appendParent(main);
 
@@ -71,7 +71,7 @@ describe("FoQueryRequest", () => {
   });
 
   it("resolves NoCandidates when parent matched but has no focus", async () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
     const main = new FoQueryParentNode("main", rootNode.root);
     rootNode.appendParent(main);
 
@@ -85,7 +85,7 @@ describe("FoQueryRequest", () => {
   });
 
   it("focuses parent node with function focus property", async () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
     const parentFocus = vi.fn().mockResolvedValue(true);
     const main = new FoQueryParentNode("main", rootNode.root, { focus: parentFocus });
     rootNode.appendParent(main);
@@ -98,7 +98,7 @@ describe("FoQueryRequest", () => {
   });
 
   it("evaluates string focus as relative xpath on parent", async () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
     const main = new FoQueryParentNode("main", rootNode.root, { focus: "./SelectedItem" });
     rootNode.appendParent(main);
 
@@ -117,7 +117,7 @@ describe("FoQueryRequest", () => {
   });
 
   it("calls parent arbiter when string focus yields multiple candidates", async () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
     const arbiter = vi.fn((candidates: Types.XmlElement[]) => candidates[candidates.length - 1]);
     const main = new FoQueryParentNode("main", rootNode.root, { focus: "./*", arbiter });
     rootNode.appendParent(main);
@@ -146,7 +146,7 @@ describe("FoQueryRequest", () => {
   });
 
   it("resolves when matching leaf is added after request", async () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
     const main = new FoQueryParentNode("main", rootNode.root);
     rootNode.appendParent(main);
 
@@ -163,7 +163,7 @@ describe("FoQueryRequest", () => {
   });
 
   it("can be canceled", async () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
     const request = new FoQueryRequest("//nonexistent", rootNode.root);
     request.cancel();
     const status = await request.promise;
@@ -171,7 +171,7 @@ describe("FoQueryRequest", () => {
   });
 
   it("recursively evaluates nested parent string focus", async () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
     const app = new FoQueryParentNode("app", rootNode.root, { focus: "./content" });
     rootNode.appendParent(app);
     const content = new FoQueryParentNode("content", rootNode.root, { focus: "./SelectedItem" });
@@ -194,7 +194,7 @@ describe("FoQueryRequest", () => {
   // --- Diagnostics ---
 
   it("provides diagnostics with matched elements, candidates, and winner", async () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
     const main = new FoQueryParentNode("main", rootNode.root);
     rootNode.appendParent(main);
 
@@ -216,7 +216,7 @@ describe("FoQueryRequest", () => {
 
   it("diagnostics shows all candidates and arbiter winner", async () => {
     const rootArbiter = vi.fn((candidates: Types.XmlElement[]) => candidates[1]);
-    const rootNode = new FoQueryRootNode("Root", { arbiter: rootArbiter });
+    const rootNode = new FoQueryRootNode(window, "Root", { arbiter: rootArbiter });
 
     const header = new FoQueryParentNode("header", rootNode.root);
     const main = new FoQueryParentNode("main", rootNode.root);
@@ -241,7 +241,7 @@ describe("FoQueryRequest", () => {
   });
 
   it("diagnostics includes startedAt, resolvedAt, and xpath", async () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
     const main = new FoQueryParentNode("main", rootNode.root);
     rootNode.appendParent(main);
 
@@ -265,7 +265,7 @@ describe("FoQueryRequest", () => {
   });
 
   it("diagnostics resolvedAt is set on timeout", async () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
 
     const request = new FoQueryRequest("//nonexistent", rootNode.root, { timeout: 100 });
     await request.promise;
@@ -275,7 +275,7 @@ describe("FoQueryRequest", () => {
   });
 
   it("diagnostics resolvedAt is set on cancel", async () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
 
     const request = new FoQueryRequest("//nonexistent", rootNode.root, { timeout: 5000 });
     request.cancel();
@@ -286,7 +286,7 @@ describe("FoQueryRequest", () => {
   });
 
   it("diagnostics resolvedAt is undefined while request is pending", () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
 
     const request = new FoQueryRequest("//nonexistent", rootNode.root, { timeout: 5000 });
 
@@ -298,7 +298,7 @@ describe("FoQueryRequest", () => {
   });
 
   it("diagnostics xpath matches for parent-bound request", async () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
     const main = new FoQueryParentNode("main", rootNode.root);
     rootNode.appendParent(main);
 
@@ -318,7 +318,7 @@ describe("FoQueryRequest", () => {
   // --- lastFocused sorting ---
 
   it("picks the most recently focused candidate", async () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
     const main = new FoQueryParentNode("main", rootNode.root);
     rootNode.appendParent(main);
 
@@ -354,7 +354,7 @@ describe("FoQueryRequest", () => {
       }
       return candidates[0];
     });
-    const rootNode = new FoQueryRootNode("Root", { arbiter: rootArbiter });
+    const rootNode = new FoQueryRootNode(window, "Root", { arbiter: rootArbiter });
     const main = new FoQueryParentNode("main", rootNode.root);
     rootNode.appendParent(main);
 
@@ -388,7 +388,7 @@ describe("FoQueryRequest", () => {
   });
 
   it("uses parent lastFocused as fallback when sub-candidates lack it", async () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
 
     const sidebar = new FoQueryParentNode("sidebar", rootNode.root, { focus: "./SelectedItem" });
     const content = new FoQueryParentNode("content", rootNode.root, { focus: "./SelectedItem" });
@@ -427,7 +427,7 @@ describe("FoQueryRequest", () => {
   // --- Parent-bound requests ---
 
   it("evaluates xpath relative to parent when parent-bound", async () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
 
     const header = new FoQueryParentNode("header", rootNode.root);
     const main = new FoQueryParentNode("main", rootNode.root);
@@ -455,7 +455,7 @@ describe("FoQueryRequest", () => {
   });
 
   it("parent-bound request still reacts to tree changes via subscription", async () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
     const main = new FoQueryParentNode("main", rootNode.root);
     rootNode.appendParent(main);
 
@@ -473,7 +473,7 @@ describe("FoQueryRequest", () => {
   // --- requestFocus convenience method ---
 
   it("root.requestFocus creates a request evaluated from root", async () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
     const main = new FoQueryParentNode("main", rootNode.root);
     rootNode.appendParent(main);
 
@@ -488,7 +488,7 @@ describe("FoQueryRequest", () => {
   });
 
   it("parent.requestFocus creates a request evaluated from parent", async () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
     const header = new FoQueryParentNode("header", rootNode.root);
     const main = new FoQueryParentNode("main", rootNode.root);
     rootNode.appendParent(header);
@@ -517,7 +517,7 @@ describe("FoQueryRequest", () => {
   // --- Parent axis (..) from child context ---
 
   it("parent axis (..) focuses parent with string focus from child context", async () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
 
     const messages = new FoQueryParentNode("messages", rootNode.root, {
       focus: "./MessageInput",
@@ -545,7 +545,7 @@ describe("FoQueryRequest", () => {
   });
 
   it("parent axis (..) resolves NoCandidates when parent has no focus", async () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
 
     const messages = new FoQueryParentNode("messages", rootNode.root);
     rootNode.appendParent(messages);
@@ -566,7 +566,7 @@ describe("FoQueryRequest", () => {
   // --- Parent-bound with string focus ---
 
   it("parent-bound request resolves via parent string focus", async () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
 
     const main = new FoQueryParentNode("main", rootNode.root);
     rootNode.appendParent(main);
@@ -593,7 +593,7 @@ describe("FoQueryRequest", () => {
   // --- Edge cases ---
 
   it("returns empty diagnostics when xpath matches nothing", async () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
 
     const request = new FoQueryRequest("//nonexistent", rootNode.root);
     // No candidates, no matched elements — stays waiting
@@ -608,7 +608,7 @@ describe("FoQueryRequest", () => {
   });
 
   it("handles multiple concurrent requests on same tree", async () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
 
     const main = new FoQueryParentNode("main", rootNode.root);
     rootNode.appendParent(main);
@@ -635,7 +635,7 @@ describe("FoQueryRequest", () => {
   // --- Progressive matching ---
 
   it("progressive: resolves immediately when full xpath matches", async () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
     const main = new FoQueryParentNode("main", rootNode.root);
     rootNode.appendParent(main);
 
@@ -651,7 +651,7 @@ describe("FoQueryRequest", () => {
   });
 
   it("progressive: tracks partial matches when full xpath doesn't match yet", async () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
 
     // Full query has predicates: //main[@active='true']/SelectedItem
     // Simplification chain: //main[@active='true']/SelectedItem → //main/SelectedItem
@@ -679,7 +679,7 @@ describe("FoQueryRequest", () => {
   });
 
   it("progressive: resolves when tree grows to match full xpath", async () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
 
     // Query without predicates — no simplification chain, but tests timeout + eventual match
     const request = new FoQueryRequest("//main/SelectedItem", rootNode.root, { timeout: 5000 });
@@ -700,7 +700,7 @@ describe("FoQueryRequest", () => {
   });
 
   it("progressive: times out when full xpath never matches", async () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
     const main = new FoQueryParentNode("main", rootNode.root);
     rootNode.appendParent(main);
 
@@ -712,7 +712,7 @@ describe("FoQueryRequest", () => {
   });
 
   it("progressive: records degradation when partial match disappears", async () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
 
     // Use predicate so we get simplifications: //main[@x]/SelectedItem → //main/SelectedItem
     const request = new FoQueryRequest("//main[@x]/SelectedItem", rootNode.root, { timeout: 500 });
@@ -746,7 +746,7 @@ describe("FoQueryRequest", () => {
   // --- Single active request ---
 
   it("consecutive requestFocus cancels the pending previous request", async () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
     const main = new FoQueryParentNode("main", rootNode.root);
     rootNode.appendParent(main);
 
@@ -769,7 +769,7 @@ describe("FoQueryRequest", () => {
   });
 
   it("requestFocus on different parents also cancels pending previous", async () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
     const header = new FoQueryParentNode("header", rootNode.root);
     const main = new FoQueryParentNode("main", rootNode.root);
     rootNode.appendParent(header);
@@ -796,7 +796,7 @@ describe("FoQueryRequest", () => {
   // --- Corner cases ---
 
   it("already-resolved request does not block a new requestFocus", async () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
     const main = new FoQueryParentNode("main", rootNode.root);
     rootNode.appendParent(main);
 
@@ -823,7 +823,7 @@ describe("FoQueryRequest", () => {
   });
 
   it("resolved request unsubscribes and doesn't react to further tree changes", async () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
     const main = new FoQueryParentNode("main", rootNode.root);
     rootNode.appendParent(main);
 
@@ -849,7 +849,7 @@ describe("FoQueryRequest", () => {
   });
 
   it("progressive: diagnostics timestamps are monotonically increasing", async () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
 
     const request = new FoQueryRequest("//main[@x]/SelectedItem", rootNode.root, {
       timeout: 2000,
@@ -885,7 +885,7 @@ describe("FoQueryRequest", () => {
   });
 
   it("progressive: full match at step N stops progressive tracking", async () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
     const main = new FoQueryParentNode("main", rootNode.root);
     rootNode.appendParent(main);
 
@@ -914,7 +914,7 @@ describe("FoQueryRequest", () => {
   });
 
   it("progressive: partial match depth improves as tree grows", async () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
 
     // //main[@x]/sidebar[@y]/SelectedItem simplifies to:
     // //main[@x]/sidebar/SelectedItem, //main/sidebar/SelectedItem
@@ -954,7 +954,7 @@ describe("FoQueryRequest", () => {
   });
 
   it("timeout cancels and cleans up pending request", async () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
 
     const request = new FoQueryRequest("//nonexistent", rootNode.root, { timeout: 100 });
     const status = await request.promise;
@@ -977,7 +977,7 @@ describe("FoQueryRequest", () => {
   });
 
   it("multiple concurrent FoQueryRequest constructors — only last one active", async () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
 
     // Three requests created in sequence, all pending
     const req1 = new FoQueryRequest("//a", rootNode.root, { timeout: 5000 });
@@ -992,5 +992,78 @@ describe("FoQueryRequest", () => {
     expect(s1).toBe(RequestStatus.Canceled);
     expect(s2).toBe(RequestStatus.Canceled);
     expect(s3).toBe(RequestStatus.Canceled);
+  });
+
+  // --- Cancel on user interaction ---
+
+  it("cancels pending request when user clicks on the page", async () => {
+    const rootNode = new FoQueryRootNode(window);
+
+    const request = new FoQueryRequest("//nonexistent", rootNode.root, { timeout: 5000 });
+
+    // Simulate a user click
+    document.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+
+    const status = await request.promise;
+    expect(status).toBe(RequestStatus.Canceled);
+  });
+
+  it("cancels pending request when focus moves to another element", async () => {
+    const rootNode = new FoQueryRootNode(window);
+    const main = new FoQueryParentNode("main", rootNode.root);
+    rootNode.appendParent(main);
+
+    const request = new FoQueryRequest("//nonexistent", rootNode.root, { timeout: 5000 });
+
+    // Simulate focus moving to some other element
+    const btn = document.createElement("button");
+    document.body.appendChild(btn);
+    btn.focus();
+
+    const status = await request.promise;
+    expect(status).toBe(RequestStatus.Canceled);
+    document.body.removeChild(btn);
+  });
+
+  it("does not cancel when focus is caused by the request itself", async () => {
+    const rootNode = new FoQueryRootNode(window);
+    const main = new FoQueryParentNode("main", rootNode.root);
+    rootNode.appendParent(main);
+
+    const el = document.createElement("button");
+    document.body.appendChild(el);
+    main.appendLeaf(new FoQueryLeafNode(["SelectedItem"], rootNode.root), el);
+
+    const request = new FoQueryRequest("//main/SelectedItem", rootNode.root);
+    const status = await request.promise;
+
+    // Should succeed, not be canceled by its own focus
+    expect(status).toBe(RequestStatus.Succeeded);
+    document.body.removeChild(el);
+  });
+
+  it("removes interaction listeners after request resolves", async () => {
+    const rootNode = new FoQueryRootNode(window);
+    const main = new FoQueryParentNode("main", rootNode.root);
+    rootNode.appendParent(main);
+
+    const el = document.createElement("button");
+    document.body.appendChild(el);
+    main.appendLeaf(new FoQueryLeafNode(["SelectedItem"], rootNode.root), el);
+
+    const req1 = new FoQueryRequest("//main/SelectedItem", rootNode.root);
+    await req1.promise;
+
+    // After resolving, clicking should not affect anything
+    const req2 = new FoQueryRequest("//nonexistent", rootNode.root, { timeout: 5000 });
+
+    // This click should cancel req2, not interfere with the already-resolved req1
+    document.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+
+    const status2 = await req2.promise;
+    expect(status2).toBe(RequestStatus.Canceled);
+    expect(req1.status).toBe(RequestStatus.Succeeded); // unchanged
+
+    document.body.removeChild(el);
   });
 });

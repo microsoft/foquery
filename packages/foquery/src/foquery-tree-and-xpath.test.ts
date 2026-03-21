@@ -9,7 +9,7 @@ import { FoQueryLeafNode } from "./foquery-leaf-node";
 
 describe("Tree building and XPath queries", () => {
   it("queries leaf nodes by name using XPath", () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
 
     const header = new FoQueryParentNode("header", rootNode.root);
     rootNode.appendParent(header);
@@ -26,7 +26,7 @@ describe("Tree building and XPath queries", () => {
   });
 
   it("queries leaf nodes under a specific parent path", () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
 
     const header = new FoQueryParentNode("header", rootNode.root);
     const main = new FoQueryParentNode("main", rootNode.root);
@@ -47,7 +47,7 @@ describe("Tree building and XPath queries", () => {
   });
 
   it("queries multiple leaf names on same element", () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
 
     const main = new FoQueryParentNode("main", rootNode.root);
     rootNode.appendParent(main);
@@ -67,7 +67,7 @@ describe("Tree building and XPath queries", () => {
   });
 
   it("queries deeply nested tree with XPath", () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
 
     const app = new FoQueryParentNode("app", rootNode.root);
     const sidebar = new FoQueryParentNode("sidebar", rootNode.root);
@@ -93,7 +93,7 @@ describe("Tree building and XPath queries", () => {
   });
 
   it("queries parent nodes by type attribute", () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
 
     const header = new FoQueryParentNode("header", rootNode.root);
     const main = new FoQueryParentNode("main", rootNode.root);
@@ -110,7 +110,7 @@ describe("Tree building and XPath queries", () => {
   });
 
   it("reflects tree mutations in subsequent XPath queries", () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
 
     const main = new FoQueryParentNode("main", rootNode.root);
     rootNode.appendParent(main);
@@ -127,7 +127,7 @@ describe("Tree building and XPath queries", () => {
   });
 
   it("uses lastFocused attribute in XPath queries", () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
 
     const main = new FoQueryParentNode("main", rootNode.root);
     rootNode.appendParent(main);
@@ -151,7 +151,7 @@ describe("Tree building and XPath queries", () => {
   });
 
   it("renames a leaf and updates XPath results", () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
 
     const main = new FoQueryParentNode("main", rootNode.root);
     rootNode.appendParent(main);
@@ -171,7 +171,7 @@ describe("Tree building and XPath queries", () => {
   });
 
   it("renames a leaf preserving shared names", () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
 
     const main = new FoQueryParentNode("main", rootNode.root);
     rootNode.appendParent(main);
@@ -197,7 +197,7 @@ describe("Tree building and XPath queries", () => {
   });
 
   it("parent.query() evaluates xpath relative to parent", () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
 
     const header = new FoQueryParentNode("header", rootNode.root);
     const main = new FoQueryParentNode("main", rootNode.root);
@@ -219,7 +219,7 @@ describe("Tree building and XPath queries", () => {
   });
 
   it("removing a parent cleans up its children and leaves from the XML tree", () => {
-    const rootNode = new FoQueryRootNode();
+    const rootNode = new FoQueryRootNode(window);
 
     const main = new FoQueryParentNode("main", rootNode.root);
     rootNode.appendParent(main);

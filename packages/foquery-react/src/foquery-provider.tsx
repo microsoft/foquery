@@ -8,16 +8,22 @@ import { FoQueryRootNode } from "foquery";
 import { FoQueryContext, FoQueryContextProps } from "./foquery-context";
 
 export interface FoQueryProviderProps {
+  window: Window & typeof globalThis;
   rootName?: string;
   devtools?: boolean | string;
   children: React.ReactNode;
 }
 
-export function FoQueryProvider({ rootName, devtools, children }: FoQueryProviderProps) {
+export function FoQueryProvider({
+  window: win,
+  rootName,
+  devtools,
+  children,
+}: FoQueryProviderProps) {
   const rootNodeRef = useRef<FoQueryRootNode | null>(null);
 
   if (!rootNodeRef.current) {
-    rootNodeRef.current = new FoQueryRootNode(rootName);
+    rootNodeRef.current = new FoQueryRootNode(win, rootName);
   }
 
   const rootNode = rootNodeRef.current;
@@ -26,13 +32,15 @@ export function FoQueryProvider({ rootName, devtools, children }: FoQueryProvide
   useEffect(() => {
     if (devtools) {
       const globalName = typeof devtools === "string" ? devtools : "__FOQUERY_ROOT__";
-      (globalThis as Record<string, unknown>)[globalName] = rootNode;
+      rootNode.root.devtools = true;
+      (win as unknown as Record<string, unknown>)[globalName] = rootNode;
 
       return () => {
-        delete (globalThis as Record<string, unknown>)[globalName];
+        rootNode.root.devtools = false;
+        delete (win as unknown as Record<string, unknown>)[globalName];
       };
     }
-  }, [devtools, rootNode]);
+  }, [devtools, rootNode, win]);
 
   const contextProps = useMemo<FoQueryContextProps>(
     () => ({

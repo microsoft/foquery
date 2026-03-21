@@ -23,7 +23,9 @@ export interface ParentNode {
 }
 
 export interface RootNode extends ParentNode {
+  window: Window & typeof globalThis;
   xmlDoc: Document;
+  devtools?: boolean;
   subscribe: (
     callback: (parentOrLeaf: ParentNode | LeafNode, removed?: boolean) => void,
   ) => () => void;
@@ -66,10 +68,6 @@ export interface FoQueryRootNode {
   appendLeaf(leaf: FoQueryLeafNode, element: HTMLElement): void;
   query(xpath: string): XmlElement[];
   requestFocus(xpath: string, options?: RequestFocusOptions): Request;
-}
-
-declare global {
-  var __FOQUERY_ROOT__: import("./foquery-root-node").FoQueryRootNode | undefined;
 }
 
 export interface Request {

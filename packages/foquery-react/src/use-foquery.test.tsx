@@ -31,7 +31,7 @@ describe("useFoQuery", () => {
 
     flushSync(() => {
       root.render(
-        <FoQueryProvider>
+        <FoQueryProvider window={window}>
           <RootCapture>
             <FoQueryParent name="main">
               <Leaf />
@@ -70,7 +70,7 @@ describe("useFoQuery", () => {
 
     flushSync(() => {
       root.render(
-        <FoQueryProvider>
+        <FoQueryProvider window={window}>
           <RootCapture>
             <FoQueryParent name="main">
               <Leaf />
@@ -106,7 +106,7 @@ describe("useFoQuery", () => {
 
     function App({ showLeaf }: { showLeaf: boolean }) {
       return (
-        <FoQueryProvider>
+        <FoQueryProvider window={window}>
           <RootCapture>
             <FoQueryParent name="main">{showLeaf ? <Leaf /> : null}</FoQueryParent>
           </RootCapture>
@@ -149,7 +149,7 @@ describe("useFoQuery", () => {
 
     flushSync(() => {
       root.render(
-        <FoQueryProvider>
+        <FoQueryProvider window={window}>
           <RootCapture>
             <FoQueryParent name="main">
               <Leaf />
@@ -197,7 +197,7 @@ describe("useFoQuery", () => {
 
     flushSync(() => {
       root.render(
-        <FoQueryProvider>
+        <FoQueryProvider window={window}>
           <RootCapture>
             <FoQueryParent name="header">
               <LeafItem name="DefaultItem" />
@@ -245,7 +245,7 @@ describe("useFoQuery", () => {
     flushSync(() => {
       root.render(
         <React.StrictMode>
-          <FoQueryProvider>
+          <FoQueryProvider window={window}>
             <RootCapture>
               <FoQueryParent name="main">
                 <Leaf />
@@ -282,7 +282,7 @@ describe("useFoQuery", () => {
 
     flushSync(() => {
       root.render(
-        <FoQueryProvider>
+        <FoQueryProvider window={window}>
           <RootCapture>
             <FoQueryParent name="main">
               <Leaf tag="button" />
@@ -299,7 +299,7 @@ describe("useFoQuery", () => {
     // Change the underlying element
     flushSync(() => {
       root.render(
-        <FoQueryProvider>
+        <FoQueryProvider window={window}>
           <RootCapture>
             <FoQueryParent name="main">
               <Leaf tag="div" />
@@ -332,7 +332,7 @@ describe("useFoQuery", () => {
 
     function App({ inMain }: { inMain: boolean }) {
       return (
-        <FoQueryProvider>
+        <FoQueryProvider window={window}>
           <RootCapture>
             <FoQueryParent name="header">{!inMain ? <Leaf /> : null}</FoQueryParent>
             <FoQueryParent name="main">{inMain ? <Leaf /> : null}</FoQueryParent>
@@ -375,7 +375,7 @@ describe("useFoQuery", () => {
     function App({ show }: { show: boolean }) {
       return (
         <React.StrictMode>
-          <FoQueryProvider>
+          <FoQueryProvider window={window}>
             <RootCapture>
               <FoQueryParent name="main">{show ? <Leaf /> : null}</FoQueryParent>
             </RootCapture>
