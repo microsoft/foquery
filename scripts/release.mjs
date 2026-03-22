@@ -53,6 +53,8 @@ function bumpVersion(current, bump) {
   }
 }
 
+const manifest = "packages/foquery-devtools/src/manifest.json";
+
 function updatePackageVersions(newVersion) {
   for (const pkgPath of packages) {
     const pkg = readJson(pkgPath);
@@ -66,6 +68,12 @@ function updatePackageVersions(newVersion) {
     writeJson(pkgPath, pkg);
     console.log(`  ${pkg.name} → ${newVersion}`);
   }
+
+  // Update devtools extension manifest
+  const m = readJson(manifest);
+  m.version = newVersion;
+  writeJson(manifest, m);
+  console.log(`  foquery-devtools manifest → ${newVersion}`);
 }
 
 async function prompt(question) {
@@ -113,7 +121,7 @@ async function main() {
 
   // Commit and tag
   run(
-    `git add packages/foquery/package.json packages/foquery-react/package.json packages/foquery-dom/package.json`,
+    `git add packages/foquery/package.json packages/foquery-react/package.json packages/foquery-dom/package.json packages/foquery-devtools/src/manifest.json`,
   );
   run(`git commit -m "v${newVersion}"`);
   run(`git tag v${newVersion}`);

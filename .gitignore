@@ -24,3 +24,6 @@ Thumbs.db
 
 codespace-telemetry-debug.log
 test-results/
+
+# Extension zip
+*.zip
