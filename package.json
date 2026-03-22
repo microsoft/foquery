@@ -23,7 +23,8 @@
     "publish:foquery-react": "npm run prepublish:packages && npm -w foquery-react publish",
     "publish:foquery-dom": "npm run prepublish:packages && npm -w foquery-dom publish",
     "publish:all": "npm run prepublish:packages && npm -w foquery publish && npm -w foquery-react publish && npm -w foquery-dom publish",
-    "publish:dry-run": "npm run prepublish:packages && npm -w foquery publish --dry-run && npm -w foquery-react publish --dry-run && npm -w foquery-dom publish --dry-run"
+    "publish:dry-run": "npm run prepublish:packages && npm -w foquery publish --dry-run && npm -w foquery-react publish --dry-run && npm -w foquery-dom publish --dry-run",
+    "release": "node scripts/release.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
