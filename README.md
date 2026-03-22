@@ -57,7 +57,7 @@ function Leaf({ names, children }) {
 
 function App() {
   return (
-    <FoQueryProvider rootName="Root" devtools>
+    <FoQueryProvider window={window} rootName="Root" devtools>
       <FoQueryParent name="main" focus="./SelectedItem">
         <Leaf names={["SelectedItem"]}>Click me</Leaf>
         <Leaf names={["DefaultItem"]}>Other</Leaf>
@@ -76,7 +76,22 @@ const domRoot = new FoQueryDOMRoot(container);
 const main = domRoot.appendParent(mainEl, "main");
 const leaf = main.appendLeaf(btnEl, ["SelectedItem"]);
 
-domRoot.root.requestFocus("//main/SelectedItem");
+domRoot.requestFocus("//main/SelectedItem");
+```
+
+### Core (no framework)
+
+```ts
+import { FoQueryRootNode, FoQueryParentNode, FoQueryLeafNode } from "foquery";
+
+const rootNode = new FoQueryRootNode(window, "Root", { devtools: true });
+const main = new FoQueryParentNode("main", rootNode.root, { focus: "./SelectedItem" });
+rootNode.appendParent(main);
+
+const leaf = new FoQueryLeafNode(["SelectedItem"], rootNode.root);
+main.appendLeaf(leaf, document.getElementById("btn")!);
+
+rootNode.requestFocus("//main/SelectedItem");
 ```
 
 ## Development
@@ -86,8 +101,7 @@ npm install
 npm run dev          # start example app
 npm run all          # format → lint → typecheck → build → test
 npm run test         # run all tests
-npm run build        # build all packages
-npm run lint         # lint all packages
+npm run release      # interactive release (bump version, publish to npm)
 npm run graph        # Nx dependency graph
 ```
 
