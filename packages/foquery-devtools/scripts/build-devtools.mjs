@@ -9,10 +9,19 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const packageDir = path.resolve(__dirname, "..");
 const srcDir = path.join(packageDir, "src");
 const distDir = path.join(packageDir, "dist");
+const zipPath = path.join(packageDir, "foquery-devtools.zip");
 
 await rm(distDir, { recursive: true, force: true });
 await execFileAsync("npx", ["tsc", "-p", "tsconfig.json"], { cwd: packageDir });
 await copyStaticAssets(srcDir, distDir);
+await createZip(distDir, zipPath);
+
+async function createZip(dir, outPath) {
+  await rm(outPath, { force: true });
+  await execFileAsync("zip", ["-r", "-j", outPath, dir, "-x", "*.map", "*.e2e.*"]);
+  const { size } = await stat(outPath);
+  console.log(`Created ${path.basename(outPath)} (${(size / 1024).toFixed(1)} KB)`);
+}
 
 async function copyStaticAssets(sourceDir, targetDir) {
   await mkdir(targetDir, { recursive: true });

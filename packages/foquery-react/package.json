@@ -1,6 +1,6 @@
 {
   "name": "foquery-react",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "React bindings for foquery",
   "license": "MIT",
   "main": "./dist/index.js",
@@ -18,7 +18,7 @@
   ],
   "sideEffects": false,
   "dependencies": {
-    "foquery": "^0.0.1"
+    "foquery": "^0.0.2"
   },
   "peerDependencies": {
     "react": ">=17"

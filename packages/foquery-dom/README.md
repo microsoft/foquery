@@ -6,14 +6,16 @@ Vanilla DOM bindings for FoQuery. Provides an imperative API to build the FoQuer
 
 ### FoQueryDOMRoot
 
-Creates a root node bound to a container element. Uses `MutationObserver` to automatically clean up parent nodes when their DOM elements are removed.
+Creates a root node bound to a container element. Derives the `window` reference from the element's `ownerDocument.defaultView`. Uses `MutationObserver` to automatically clean up parent nodes when their DOM elements are removed.
 
 ```ts
 const domRoot = new FoQueryDOMRoot(container, "Root");
-domRoot.root.query("//main/SelectedItem");
-domRoot.root.requestFocus("//main/SelectedItem");
-domRoot.dispose(); // cleanup
+domRoot.query("//main/SelectedItem");
+domRoot.requestFocus("//main/SelectedItem");
+domRoot.dispose(); // cleanup observer and attributes
 ```
+
+The container element must be attached to a document with a window (throws if `ownerDocument.defaultView` is null).
 
 ### FoQueryDOMParent
 
@@ -36,6 +38,16 @@ const leaf = header.appendLeaf(btnEl, ["SelectedItem", "DefaultItem"]);
 
 leaf.rename(["FocusedItem"]);
 leaf.remove();
+```
+
+A custom synchronous focus function can be provided:
+
+```ts
+const leaf = header.appendLeaf(btnEl, ["Item"], () => {
+  btnEl.scrollIntoView();
+  btnEl.focus();
+  return true; // signal focus was handled
+});
 ```
 
 ## DOM attributes

@@ -11,13 +11,14 @@ Compatible with React 17+ and React Concurrent Mode (StrictMode safe).
 Root provider. Creates the `FoQueryRootNode` and provides context to the tree.
 
 ```tsx
-<FoQueryProvider rootName="Root" devtools>
+<FoQueryProvider window={window} rootName="Root" devtools>
   {children}
 </FoQueryProvider>
 ```
 
 Props:
 
+- `window` — **required**. The `Window` object to use for document access and event listeners. Enables iframe and testing scenarios.
 - `rootName` — XML root element name (default: `"Root"`)
 - `devtools` — expose root as `window.__FOQUERY_ROOT__` for devtools (default: `false`, or pass a custom global name string)
 
@@ -34,8 +35,8 @@ Declares a parent node in the FoQuery tree. Nesting `FoQueryParent` components b
 Props:
 
 - `name` — parent node name (becomes the XML element tag)
-- `focus` — optional. String (relative xpath) or function `() => Promise<boolean>` for focus resolution
-- `arbiter` — optional. Resolves multiple candidates under this parent's string focus
+- `focus` — optional string (relative XPath). When this parent is matched by a focus request, the XPath is evaluated to find focusable leaves underneath.
+- `arbiter` — optional function to resolve multiple candidates under this parent's focus query
 
 ### useFoQuery
 
@@ -51,7 +52,7 @@ function Leaf() {
 Parameters:
 
 - `names` — array of leaf name strings (each becomes an XML element)
-- `focus` — optional custom focus function `() => Promise<boolean>`
+- `focus` — optional synchronous custom focus function `() => boolean`. Return `true` to signal focus was handled, `false` to fall back to `element.focus()`.
 
 ### FoQueryContext
 
@@ -59,7 +60,7 @@ React context providing access to the current parent node, root, and tree manipu
 
 ```tsx
 const ctx = useContext(FoQueryContext);
-ctx.root.requestFocus("//main/SelectedItem", { timeout: 5000 });
+ctx.requestFocus("//main/SelectedItem", { timeout: 5000 });
 ```
 
 ## Concurrent Mode

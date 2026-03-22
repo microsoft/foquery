@@ -7,7 +7,9 @@ import { RequestStatus } from "./consts";
 import { generateXPathSimplifications } from "./xpath-utils";
 import { evaluateXPath } from "./xpath-eval";
 
-// Only one active request globally — any new requestFocus cancels the previous one
+// Only one active request globally — a page can only have one focused element at a time,
+// so even with multiple FoQuery roots, only one request can be active. Any new
+// requestFocus cancels the previous one regardless of which root it belongs to.
 let _activeRequest: FoQueryRequest | undefined;
 
 export class FoQueryRequest implements Types.Request {
