@@ -66,6 +66,7 @@ interface DiagEvent {
   timestamp: number;
   xpath?: string;
   leafNames?: string[];
+  reason?: string;
 }
 
 interface DiagnosticsResult {
@@ -75,6 +76,7 @@ interface DiagnosticsResult {
   status: string;
   startedAt?: number;
   resolvedAt?: number;
+  cancelReason?: string;
   events?: DiagEvent[];
 }
 
@@ -407,7 +409,10 @@ function renderDiagnostics(diag: DiagnosticsResult): void {
   const statusSection = createDiagSection("Status");
   const statusItem = document.createElement("div");
   statusItem.className = "diag-item";
-  statusItem.textContent = `${diag.status} (${elapsed}ms)`;
+  const statusLabel = diag.cancelReason
+    ? `${diag.status}: ${diag.cancelReason} (${elapsed}ms)`
+    : `${diag.status} (${elapsed}ms)`;
+  statusItem.textContent = statusLabel;
   statusItem.style.color = diag.status === "succeeded" ? "#4ec9b0" : "#f44747";
   statusSection.appendChild(statusItem);
   diagnosticsEl.appendChild(statusSection);
@@ -432,6 +437,7 @@ function renderDiagnostics(diag: DiagnosticsResult): void {
       item.className = "diag-item";
       const dt = evt.timestamp - startedAt;
       let label = evt.type;
+      if (evt.reason) label += ` (${evt.reason})`;
       if (evt.xpath) label += `: ${evt.xpath}`;
       if (evt.leafNames) label += `: ${evt.leafNames.join(", ")}`;
       item.textContent = `+${dt}ms ${label}`;
