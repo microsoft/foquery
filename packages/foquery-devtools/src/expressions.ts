@@ -178,10 +178,12 @@ export function focusExpression(
       status: req.status === 2 ? "succeeded" : req.status === 3 ? "canceled" : req.status === 4 ? "timed out" : req.status === 5 ? "no candidates" : "waiting",
       startedAt: finalDiag.startedAt,
       resolvedAt: finalDiag.resolvedAt,
+      cancelReason: finalDiag.cancelReason,
       events: finalDiag.events.map(function(e) {
         var r = { type: e.type, timestamp: e.timestamp };
         if (e.xpath !== undefined) r.xpath = e.xpath;
         if (e.leafNames !== undefined) r.leafNames = e.leafNames;
+        if (e.reason !== undefined) r.reason = e.reason;
         return r;
       })
     };
@@ -200,10 +202,12 @@ function serializeDiagSnippet(): string {
         status: req.status === 2 ? "succeeded" : req.status === 3 ? "canceled" : req.status === 4 ? "timed out" : req.status === 5 ? "no candidates" : "waiting",
         startedAt: diag.startedAt,
         resolvedAt: diag.resolvedAt,
+        cancelReason: diag.cancelReason,
         events: diag.events.map(function(e) {
           var r = { type: e.type, timestamp: e.timestamp };
           if (e.xpath !== undefined) r.xpath = e.xpath;
           if (e.leafNames !== undefined) r.leafNames = e.leafNames;
+          if (e.reason !== undefined) r.reason = e.reason;
           return r;
         })
       };

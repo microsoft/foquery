@@ -1085,6 +1085,121 @@ describe("FoQueryRequest", () => {
     document.body.removeChild(el);
   });
 
+  // --- Cancel reasons ---
+
+  it("cancel reason: 'user-click' when mousedown on page", async () => {
+    const rootNode = new FoQueryRootNode(window);
+    const request = new FoQueryRequest("//nonexistent", rootNode.root, { timeout: 5000 });
+
+    document.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    await request.promise;
+
+    expect(request.status).toBe(RequestStatus.Canceled);
+    expect(request.diagnostics!.cancelReason).toBe("user-click");
+    const cancelEvent = request.diagnostics!.events.find((e) => e.type === "canceled");
+    expect(cancelEvent).toBeDefined();
+    if (cancelEvent?.type === "canceled") {
+      expect(cancelEvent.reason).toBe("user-click");
+    }
+  });
+
+  it("cancel reason: 'focus-moved' when focus moves to another element", async () => {
+    const rootNode = new FoQueryRootNode(window);
+    const request = new FoQueryRequest("//nonexistent", rootNode.root, { timeout: 5000 });
+
+    const btn = document.createElement("button");
+    document.body.appendChild(btn);
+    btn.focus();
+
+    await request.promise;
+
+    expect(request.status).toBe(RequestStatus.Canceled);
+    expect(request.diagnostics!.cancelReason).toBe("focus-moved");
+    const cancelEvent = request.diagnostics!.events.find((e) => e.type === "canceled");
+    if (cancelEvent?.type === "canceled") {
+      expect(cancelEvent.reason).toBe("focus-moved");
+    }
+    document.body.removeChild(btn);
+  });
+
+  it("cancel reason: 'superseded' when a new request replaces the current one", async () => {
+    const rootNode = new FoQueryRootNode(window);
+    const main = new FoQueryParentNode("main", rootNode.root);
+    rootNode.appendParent(main);
+
+    const el = document.createElement("button");
+    document.body.appendChild(el);
+    main.appendLeaf(new FoQueryLeafNode(["Item"], rootNode.root), el);
+
+    const req1 = new FoQueryRequest("//nonexistent", rootNode.root, { timeout: 5000 });
+    const req2 = new FoQueryRequest("//main/Item", rootNode.root);
+
+    await Promise.all([req1.promise, req2.promise]);
+
+    expect(req1.status).toBe(RequestStatus.Canceled);
+    expect(req1.diagnostics!.cancelReason).toBe("superseded");
+    const cancelEvent = req1.diagnostics!.events.find((e) => e.type === "canceled");
+    if (cancelEvent?.type === "canceled") {
+      expect(cancelEvent.reason).toBe("superseded");
+    }
+
+    expect(req2.status).toBe(RequestStatus.Succeeded);
+    expect(req2.diagnostics!.cancelReason).toBeUndefined();
+    document.body.removeChild(el);
+  });
+
+  it("cancel reason: 'api' when cancel() is called without a reason", async () => {
+    const rootNode = new FoQueryRootNode(window);
+    const request = new FoQueryRequest("//nonexistent", rootNode.root);
+
+    request.cancel();
+    await request.promise;
+
+    expect(request.status).toBe(RequestStatus.Canceled);
+    expect(request.diagnostics!.cancelReason).toBe("api");
+    const cancelEvent = request.diagnostics!.events.find((e) => e.type === "canceled");
+    if (cancelEvent?.type === "canceled") {
+      expect(cancelEvent.reason).toBe("api");
+    }
+  });
+
+  it("cancel reason: custom reason when cancel() is called with one", async () => {
+    const rootNode = new FoQueryRootNode(window);
+    const request = new FoQueryRequest("//nonexistent", rootNode.root);
+
+    request.cancel("api");
+    await request.promise;
+
+    expect(request.diagnostics!.cancelReason).toBe("api");
+  });
+
+  it("no cancelReason on succeeded requests", async () => {
+    const rootNode = new FoQueryRootNode(window);
+    const main = new FoQueryParentNode("main", rootNode.root);
+    rootNode.appendParent(main);
+
+    const el = document.createElement("button");
+    document.body.appendChild(el);
+    main.appendLeaf(new FoQueryLeafNode(["Item"], rootNode.root), el);
+
+    const request = new FoQueryRequest("//main/Item", rootNode.root);
+    await request.promise;
+
+    expect(request.status).toBe(RequestStatus.Succeeded);
+    expect(request.diagnostics!.cancelReason).toBeUndefined();
+    document.body.removeChild(el);
+  });
+
+  it("no cancelReason on timed out requests", async () => {
+    const rootNode = new FoQueryRootNode(window);
+    const request = new FoQueryRequest("//nonexistent", rootNode.root, { timeout: 50 });
+
+    await request.promise;
+
+    expect(request.status).toBe(RequestStatus.TimedOut);
+    expect(request.diagnostics!.cancelReason).toBeUndefined();
+  });
+
   // --- Check callbacks ---
 
   it("check callback on leaf: delays focus until check returns true", async () => {

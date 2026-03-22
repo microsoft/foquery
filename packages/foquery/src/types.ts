@@ -88,9 +88,12 @@ export interface Request {
 
 export type RequestStatus = 1 | 2 | 3 | 4 | 5;
 
+export type CancelReason = "superseded" | "user-click" | "focus-moved" | "api";
+
 export interface RequestDiagnostics {
   startedAt: number;
   resolvedAt: number | undefined;
+  cancelReason: CancelReason | undefined;
   xpath: string;
   matchedElements: XmlElement[];
   candidates: XmlElement[];
@@ -105,6 +108,6 @@ export type DiagnosticEvent =
   | { type: "matched-pending-checks"; leafNames: string[]; timestamp: number }
   | { type: "checks-passed"; leafNames: string[]; timestamp: number }
   | { type: "succeeded"; timestamp: number }
-  | { type: "canceled"; timestamp: number }
+  | { type: "canceled"; reason: CancelReason; timestamp: number }
   | { type: "timed-out"; timestamp: number }
   | { type: "no-candidates"; timestamp: number };

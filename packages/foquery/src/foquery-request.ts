@@ -13,7 +13,9 @@ let _activeRequest: FoQueryRequest | undefined;
 export class FoQueryRequest implements Types.Request {
   private _root: Types.RootNode;
   private _contextNode: Types.ParentNode;
-  private _resolve: ((status: Types.RequestStatus) => void) | undefined;
+  private _resolve:
+    | ((status: Types.RequestStatus, cancelReason?: Types.CancelReason) => void)
+    | undefined;
   private _effectiveLastFocused = new Map<Types.XmlElement, number>();
   private _simplifications: string[][];
   private _previousPartialDepth = -1;
@@ -46,7 +48,7 @@ export class FoQueryRequest implements Types.Request {
 
     // Cancel any previous active request globally
     if (_activeRequest && _activeRequest !== this) {
-      _activeRequest.cancel();
+      _activeRequest.cancel("superseded");
     }
     _activeRequest = this; // eslint-disable-line @typescript-eslint/no-this-alias
 
@@ -60,21 +62,30 @@ export class FoQueryRequest implements Types.Request {
     });
 
     this.promise = new Promise((resolve) => {
-      this._resolve = (status: Types.RequestStatus) => {
+      this._resolve = (status: Types.RequestStatus, cancelReason?: Types.CancelReason) => {
         delete this._resolve;
         this.status = status;
         const now = Date.now();
         if (this.diagnostics) {
           this.diagnostics.resolvedAt = now;
-          const type: Types.DiagnosticEvent["type"] =
-            status === RequestStatus.Succeeded
-              ? "succeeded"
-              : status === RequestStatus.Canceled
-                ? "canceled"
+          if (cancelReason) {
+            this.diagnostics.cancelReason = cancelReason;
+          }
+          if (status === RequestStatus.Canceled) {
+            this.diagnostics.events.push({
+              type: "canceled",
+              reason: cancelReason ?? "api",
+              timestamp: now,
+            });
+          } else {
+            const type: Types.DiagnosticEvent["type"] =
+              status === RequestStatus.Succeeded
+                ? "succeeded"
                 : status === RequestStatus.TimedOut
                   ? "timed-out"
                   : "no-candidates";
-          this.diagnostics.events.push({ type, timestamp: now } as Types.DiagnosticEvent);
+            this.diagnostics.events.push({ type, timestamp: now } as Types.DiagnosticEvent);
+          }
         }
         resolve(status);
       };
@@ -101,7 +112,7 @@ export class FoQueryRequest implements Types.Request {
       if (e.target instanceof Element && e.target.closest("[data-foquery-ignore]")) {
         return;
       }
-      this._resolve?.(RequestStatus.Canceled);
+      this._resolve?.(RequestStatus.Canceled, e.type === "focusin" ? "focus-moved" : "user-click");
     };
     this._markOwnFocus = () => {
       ownFocus = true;
@@ -116,8 +127,8 @@ export class FoQueryRequest implements Types.Request {
     this._matchPath();
   }
 
-  public cancel() {
-    this._resolve?.(RequestStatus.Canceled);
+  public cancel(reason: Types.CancelReason = "api") {
+    this._resolve?.(RequestStatus.Canceled, reason);
   }
 
   private _cleanup(): void {
@@ -162,6 +173,7 @@ export class FoQueryRequest implements Types.Request {
       this.diagnostics = {
         startedAt: Date.now(),
         resolvedAt: undefined,
+        cancelReason: undefined,
         xpath: this.xpath,
         matchedElements,
         candidates,
