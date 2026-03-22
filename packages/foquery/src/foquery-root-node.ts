@@ -37,6 +37,7 @@ export class FoQueryRootNode implements Types.FoQueryRootNode {
       children: new Set(),
       leafs: new Set(),
       arbiter,
+      checkCallbacks: new Set(),
       lastFocused: undefined,
 
       subscribe: (
@@ -84,5 +85,12 @@ export class FoQueryRootNode implements Types.FoQueryRootNode {
 
   public requestFocus(xpath: string, options?: Types.RequestFocusOptions): FoQueryRequest {
     return new FoQueryRequest(xpath, this.root, options);
+  }
+
+  public registerCheck(callback: Types.CheckCallback): () => void {
+    this.root.checkCallbacks.add(callback);
+    return () => {
+      this.root.checkCallbacks.delete(callback);
+    };
   }
 }

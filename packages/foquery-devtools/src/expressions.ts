@@ -160,8 +160,8 @@ export function focusExpression(
 
     // When the page window is not OS-focused, el.focus() is a no-op and
     // focusin does not fire. Manually dispatch focusin so onFocusIn handler
-    // updates lastFocused timestamps.
-    if (diag.winner && diag.winner.foQueryLeafNode) {
+    // updates lastFocused timestamps. Only do this when the request succeeded.
+    if (req.status === 2 && diag.winner && diag.winner.foQueryLeafNode) {
       var winnerEl = diag.winner.foQueryLeafNode.element.deref();
       if (winnerEl) {
         winnerEl.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
@@ -175,11 +175,14 @@ export function focusExpression(
       matched: finalDiag.matchedElements.map(serializeEl),
       candidates: finalDiag.candidates.map(serializeEl),
       winner: finalDiag.winner ? serializeEl(finalDiag.winner) : null,
-      status: req.status === 2 ? "succeeded" : req.status === 3 ? "canceled" : req.status === 5 ? "no candidates" : "waiting",
+      status: req.status === 2 ? "succeeded" : req.status === 3 ? "canceled" : req.status === 4 ? "timed out" : req.status === 5 ? "no candidates" : "waiting",
       startedAt: finalDiag.startedAt,
       resolvedAt: finalDiag.resolvedAt,
-      progressiveMatches: finalDiag.progressiveMatches.map(function(m) {
-        return { xpath: m.xpath, matched: m.matched, timestamp: m.timestamp, degraded: m.degraded };
+      events: finalDiag.events.map(function(e) {
+        var r = { type: e.type, timestamp: e.timestamp };
+        if (e.xpath !== undefined) r.xpath = e.xpath;
+        if (e.leafNames !== undefined) r.leafNames = e.leafNames;
+        return r;
       })
     };
   })()`;
@@ -194,11 +197,14 @@ function serializeDiagSnippet(): string {
         matched: diag.matchedElements.map(serializeEl),
         candidates: diag.candidates.map(serializeEl),
         winner: diag.winner ? serializeEl(diag.winner) : null,
-        status: req.status === 2 ? "succeeded" : req.status === 3 ? "canceled" : req.status === 5 ? "no candidates" : "waiting",
+        status: req.status === 2 ? "succeeded" : req.status === 3 ? "canceled" : req.status === 4 ? "timed out" : req.status === 5 ? "no candidates" : "waiting",
         startedAt: diag.startedAt,
         resolvedAt: diag.resolvedAt,
-        progressiveMatches: diag.progressiveMatches.map(function(m) {
-          return { xpath: m.xpath, matched: m.matched, timestamp: m.timestamp, degraded: m.degraded };
+        events: diag.events.map(function(e) {
+          var r = { type: e.type, timestamp: e.timestamp };
+          if (e.xpath !== undefined) r.xpath = e.xpath;
+          if (e.leafNames !== undefined) r.leafNames = e.leafNames;
+          return r;
         })
       };
     }

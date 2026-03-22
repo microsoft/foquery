@@ -2,7 +2,7 @@
  * Copyright (c) Microsoft Corporation. All rights reserved.
  * Licensed under the MIT License.
  */
-import { useState, useCallback, useContext } from "react";
+import { useState, useCallback, useContext, useRef, useEffect } from "react";
 import { FoQueryProvider, FoQueryParent, useFoQuery, FoQueryContext } from "foquery-react";
 import type { Types } from "foquery";
 import { RequestStatus } from "foquery";
@@ -100,32 +100,32 @@ function ProgressiveDiagnostics({
             <td className="xpath-col">{diagnostics.xpath}</td>
             <td>+0ms</td>
           </tr>
-          {diagnostics.progressiveMatches.map((match, i) => (
-            <tr key={i} className={match.degraded ? "degraded" : ""}>
-              <td>
-                {match.matched ? (match.degraded ? "degraded" : "partial match") : "lost match"}
+          {diagnostics.events.map((evt, i) => (
+            <tr
+              key={i}
+              className={
+                evt.type === "succeeded"
+                  ? "success"
+                  : evt.type.includes("degraded") ||
+                      evt.type.includes("lost") ||
+                      evt.type.includes("canceled") ||
+                      evt.type.includes("timed")
+                    ? "failure"
+                    : ""
+              }
+            >
+              <td>{evt.type}</td>
+              <td className="xpath-col">
+                {"xpath" in evt ? evt.xpath : "leafNames" in evt ? evt.leafNames.join(", ") : "—"}
               </td>
-              <td className="xpath-col">{match.xpath || "—"}</td>
-              <td>{fmt(match.timestamp)}</td>
+              <td>{fmt(evt.timestamp)}</td>
             </tr>
           ))}
-          <tr className={status === "Succeeded" ? "success" : "failure"}>
-            <td>resolved: {status}</td>
-            <td className="xpath-col">
-              {diagnostics.winner
-                ? (diagnostics.winner.foQueryLeafNode?.names.join(", ") ??
-                  diagnostics.winner.foQueryParentNode?.name ??
-                  "—")
-                : "none"}
-            </td>
-            <td>{resolvedAt ? fmt(resolvedAt) : "—"}</td>
-          </tr>
         </tbody>
       </table>
       <div className="diag-summary">
         {diagnostics.candidates.length} candidate{diagnostics.candidates.length !== 1 ? "s" : ""},{" "}
-        {diagnostics.progressiveMatches.length} progressive step
-        {diagnostics.progressiveMatches.length !== 1 ? "s" : ""}
+        {diagnostics.events.length} event{diagnostics.events.length !== 1 ? "s" : ""}
         {resolvedAt ? `, total ${resolvedAt - startedAt}ms` : ""}
       </div>
     </div>
@@ -158,10 +158,24 @@ function InnerApp() {
   const [panels, setPanels] = useState<number[]>([]);
   const [nextId, setNextId] = useState(1);
   const [contentStep, setContentStep] = useState(4);
+  const [focusReady, setFocusReady] = useState(true);
   const [diagResult, setDiagResult] = useState<{
     diagnostics: Types.RequestDiagnostics;
     status: string;
   } | null>(null);
+
+  // Root-level check callback: blocks focus when checkbox is unchecked
+  const focusReadyRef = useRef(focusReady);
+  focusReadyRef.current = focusReady;
+
+  useEffect(() => {
+    if (!ctx) return;
+    const check = () => focusReadyRef.current;
+    ctx.root.checkCallbacks.add(check);
+    return () => {
+      ctx.root.checkCallbacks.delete(check);
+    };
+  }, [ctx]);
 
   const addPanel = () => {
     setPanels((prev) => [...prev, nextId]);
@@ -258,6 +272,16 @@ function InnerApp() {
       <div className="controls">
         <h2>Dynamic Controls</h2>
         <button onClick={addPanel}>Add Panel</button>
+        <label style={{ marginLeft: 12 }} data-foquery-ignore>
+          <input
+            id="focus-ready-toggle"
+            type="checkbox"
+            checked={focusReady}
+            onChange={(e) => setFocusReady(e.target.checked)}
+            data-foquery-ignore
+          />{" "}
+          Focus Ready
+        </label>
       </div>
 
       <p className="info">

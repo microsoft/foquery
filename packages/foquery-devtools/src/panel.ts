@@ -61,11 +61,11 @@ interface DiagEl {
   leafIndex?: number;
 }
 
-interface ProgressiveStep {
-  xpath: string;
-  matched: boolean;
+interface DiagEvent {
+  type: string;
   timestamp: number;
-  degraded?: boolean;
+  xpath?: string;
+  leafNames?: string[];
 }
 
 interface DiagnosticsResult {
@@ -75,7 +75,7 @@ interface DiagnosticsResult {
   status: string;
   startedAt?: number;
   resolvedAt?: number;
-  progressiveMatches?: ProgressiveStep[];
+  events?: DiagEvent[];
 }
 
 interface ActiveElementInfo {
@@ -400,35 +400,48 @@ function createDiagItem(el: DiagEl, extraClass?: string): HTMLElement {
 function renderDiagnostics(diag: DiagnosticsResult): void {
   diagnosticsEl.innerHTML = "";
 
-  // Status + elapsed time
+  const startedAt = diag.startedAt ?? Date.now();
+  const elapsed = (diag.resolvedAt ?? Date.now()) - startedAt;
+
+  // Status header
   const statusSection = createDiagSection("Status");
   const statusItem = document.createElement("div");
   statusItem.className = "diag-item";
-  if (diag.startedAt) {
-    const elapsed = (diag.resolvedAt ?? Date.now()) - diag.startedAt;
-    statusItem.textContent = `${diag.status} (${elapsed}ms)`;
-  } else {
-    statusItem.textContent = diag.status;
-  }
+  statusItem.textContent = `${diag.status} (${elapsed}ms)`;
   statusItem.style.color = diag.status === "succeeded" ? "#4ec9b0" : "#f44747";
   statusSection.appendChild(statusItem);
   diagnosticsEl.appendChild(statusSection);
 
-  // Progressive matches
-  if (diag.progressiveMatches && diag.progressiveMatches.length > 0) {
-    const progressSection = createDiagSection("Progressive");
-    for (const step of diag.progressiveMatches) {
-      const stepItem = document.createElement("div");
-      stepItem.className = "diag-item";
-      const elapsed = diag.startedAt ? step.timestamp - diag.startedAt : 0;
-      const label = step.matched ? (step.degraded ? "degraded" : "partial match") : "lost match";
-      stepItem.textContent = `${label}: ${step.xpath || "—"} (+${elapsed}ms)`;
-      stepItem.style.color = step.degraded ? "#f44747" : "#808080";
-      progressSection.appendChild(stepItem);
+  // Event timeline
+  if (diag.events && diag.events.length > 0) {
+    const eventColors: Record<string, string> = {
+      "partial-match": "#808080",
+      degraded: "#f44747",
+      "lost-match": "#f44747",
+      "matched-pending-checks": "#dcdcaa",
+      "checks-passed": "#4ec9b0",
+      succeeded: "#4ec9b0",
+      canceled: "#f44747",
+      "timed-out": "#f44747",
+      "no-candidates": "#f44747",
+    };
+
+    const eventSection = createDiagSection("Events");
+    for (const evt of diag.events) {
+      const item = document.createElement("div");
+      item.className = "diag-item";
+      const dt = evt.timestamp - startedAt;
+      let label = evt.type;
+      if (evt.xpath) label += `: ${evt.xpath}`;
+      if (evt.leafNames) label += `: ${evt.leafNames.join(", ")}`;
+      item.textContent = `+${dt}ms ${label}`;
+      item.style.color = eventColors[evt.type] ?? "#808080";
+      eventSection.appendChild(item);
     }
-    diagnosticsEl.appendChild(progressSection);
+    diagnosticsEl.appendChild(eventSection);
   }
 
+  // Matched / Candidates / Winner
   const matchedSection = createDiagSection(`Matched (${diag.matched.length})`);
   for (const el of diag.matched) matchedSection.appendChild(createDiagItem(el));
   diagnosticsEl.appendChild(matchedSection);
