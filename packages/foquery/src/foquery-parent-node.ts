@@ -42,6 +42,7 @@ export class FoQueryParentNode implements Types.FoQueryParentNode {
       leafs: new Set(),
       focus: options?.focus,
       arbiter: options?.arbiter,
+      checkCallbacks: new Set(),
       lastFocused: undefined,
     };
   }
@@ -62,6 +63,13 @@ export class FoQueryParentNode implements Types.FoQueryParentNode {
     return new FoQueryRequest(xpath, this.node, options);
   }
 
+  public registerCheck(callback: Types.CheckCallback): () => void {
+    this.node.checkCallbacks.add(callback);
+    return () => {
+      this.node.checkCallbacks.delete(callback);
+    };
+  }
+
   public rename(name: string): void {
     if (this.node.name === name) return;
 
@@ -73,6 +81,7 @@ export class FoQueryParentNode implements Types.FoQueryParentNode {
       newXmlElement.setAttribute("lastFocused", this.node.lastFocused.toString());
     }
     newXmlElement.foQueryParentNode = this.node;
+    newXmlElement.foQueryParentInst = this;
 
     while (this._xmlElement.firstChild) {
       newXmlElement.appendChild(this._xmlElement.firstChild);
@@ -83,6 +92,7 @@ export class FoQueryParentNode implements Types.FoQueryParentNode {
     }
 
     delete this._xmlElement.foQueryParentNode;
+    delete this._xmlElement.foQueryParentInst;
     this._xmlElement = newXmlElement;
     this.node.xmlElement = newXmlElement;
 

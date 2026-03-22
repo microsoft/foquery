@@ -24,6 +24,7 @@ export class FoQueryLeafNode implements Types.FoQueryLeafNode {
       parent: undefined,
       lastFocused: undefined,
       focus,
+      checkCallbacks: new Set(),
     };
 
     this.onFocusIn = () => {
@@ -38,6 +39,13 @@ export class FoQueryLeafNode implements Types.FoQueryLeafNode {
       for (const xmlElement of this.leaf.xmlElements.values()) {
         xmlElement.setAttribute("lastFocused", lastFocused.toString());
       }
+    };
+  }
+
+  public registerCheck(callback: Types.CheckCallback): () => void {
+    this.leaf.checkCallbacks.add(callback);
+    return () => {
+      this.leaf.checkCallbacks.delete(callback);
     };
   }
 

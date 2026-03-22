@@ -467,6 +467,133 @@ test.describe("devtools panel UI against live example app", () => {
     });
   });
 
+  test.describe("check callback via Focus Ready checkbox", () => {
+    test("focus waits while unchecked, resolves when checked", async () => {
+      // Type //messages query
+      await panel.fill("#xpath-input", "//messages");
+      await panel.waitForFunction(
+        () => document.getElementById("xpath-results")?.textContent === "1 result",
+        undefined,
+        { timeout: 2000 },
+      );
+
+      // Uncheck "Focus Ready" in the app (has data-foquery-ignore, won't cancel requests)
+      await app.uncheck("#focus-ready-toggle");
+
+      // Press Focus in devtools
+      await panel.click("#focus-btn");
+      await panel.waitForSelector("#diagnostics .diag-section", { timeout: 2000 });
+
+      // Should be waiting — check callback blocks
+      const initialStatus = await panel.textContent("#diagnostics .diag-section .diag-item");
+      expect(initialStatus).toContain("waiting");
+
+      // Wait a bit to confirm it stays waiting
+      await panel.waitForTimeout(500);
+      const stillWaiting = await panel.textContent("#diagnostics .diag-section .diag-item");
+      expect(stillWaiting).toContain("waiting");
+
+      // Check "Focus Ready" back on
+      await app.check("#focus-ready-toggle");
+
+      await panel.waitForTimeout(1000);
+
+      // Should resolve to succeeded
+      await panel.waitForFunction(
+        () => {
+          const items = document.querySelectorAll("#diagnostics .diag-section .diag-item");
+          return items.length > 0 && items[0].textContent?.startsWith("succeeded");
+        },
+        undefined,
+        { timeout: 5000 },
+      );
+
+      const finalStatus = await panel.textContent("#diagnostics .diag-section .diag-item");
+      expect(finalStatus).toContain("succeeded");
+    });
+  });
+
+  test.describe("check callback diagnostics in devtools", () => {
+    test("pending check event is not duplicated on tree mutations", async () => {
+      // Uncheck Focus Ready
+      await app.uncheck("#focus-ready-toggle");
+
+      // Click Progressive in the app to trigger content rebuild
+      await app.click("text=Progressive");
+
+      // Wait for content to be removed
+      await panel.waitForFunction(
+        () => document.getElementById("xpath-results")?.textContent === "",
+        undefined,
+        { timeout: 3000 },
+      );
+
+      // Type //messages/thread/SelectedItem and Focus
+      await panel.fill("#xpath-input", "//messages/thread/SelectedItem");
+      await panel.waitForFunction(
+        () => document.getElementById("focus-btn")?.hasAttribute("disabled") === false,
+        undefined,
+        { timeout: 15000 },
+      );
+      await panel.click("#focus-btn");
+
+      // Wait for events to appear (SelectedItem matched but blocked by check)
+      await panel.waitForFunction(
+        () => {
+          const headings = document.querySelectorAll("#diagnostics .diag-section h3");
+          return Array.from(headings).some((h) => h.textContent === "Events");
+        },
+        undefined,
+        { timeout: 15000 },
+      );
+
+      // Wait a couple more poll cycles for potential duplicates
+      await panel.waitForTimeout(2000);
+
+      // There should be exactly one "matched-pending-checks" entry, not duplicates
+      const pendingItems = await panel.$$eval("#diagnostics .diag-item", (els) =>
+        els.map((el) => el.textContent).filter((t) => t?.includes("matched-pending-checks")),
+      );
+
+      expect(pendingItems.length).toBe(1);
+      expect(pendingItems[0]).toContain("SelectedItem");
+    });
+
+    test("timed out request shows 'timed out' in devtools, not 'waiting'", async () => {
+      // Uncheck Focus Ready so check callback blocks
+      await app.uncheck("#focus-ready-toggle");
+
+      // Query for existing element
+      await panel.fill("#xpath-input", "//header/SelectedItem");
+      await panel.waitForFunction(
+        () => document.getElementById("focus-btn")?.hasAttribute("disabled") === false,
+        undefined,
+        { timeout: 2000 },
+      );
+
+      // Focus with a short timeout via app-side requestFocus
+      await app.evaluate(() => {
+        const root = (window as unknown as Record<string, unknown>).__FOQUERY_ROOT__ as {
+          requestFocus: (xpath: string, options: { timeout: number }) => unknown;
+        };
+        root.requestFocus("//header/SelectedItem", { timeout: 1000 });
+      });
+
+      // Wait for the request to time out
+      await panel.waitForFunction(
+        () => {
+          const items = document.querySelectorAll("#diagnostics .diag-section .diag-item");
+          return items.length > 0 && items[0].textContent?.includes("timed out");
+        },
+        undefined,
+        { timeout: 5000 },
+      );
+
+      const statusText = await panel.textContent("#diagnostics .diag-section .diag-item");
+      expect(statusText).toContain("timed out");
+    });
+  });
+
   test.describe("progressive focus with string focus parent", () => {
     test("//messages waits for children to mount via Progressive, then focuses", async () => {
       // Type //messages in the devtools query

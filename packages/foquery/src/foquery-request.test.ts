@@ -686,8 +686,8 @@ describe("FoQueryRequest", () => {
     await new Promise((r) => setTimeout(r, 50));
 
     expect(request.diagnostics).toBeDefined();
-    expect(request.diagnostics!.progressiveMatches.length).toBeGreaterThan(0);
-    expect(request.diagnostics!.progressiveMatches[0].matched).toBe(true);
+    expect(request.diagnostics!.events.length).toBeGreaterThan(0);
+    expect(request.diagnostics!.events[0].type).toBe("partial-match");
 
     request.cancel();
     await request.promise;
@@ -744,15 +744,17 @@ describe("FoQueryRequest", () => {
     await new Promise((r) => setTimeout(r, 50));
 
     // Verify partial match was recorded
-    expect(request.diagnostics!.progressiveMatches.length).toBeGreaterThan(0);
+    expect(request.diagnostics!.events.length).toBeGreaterThan(0);
 
     // Remove main — degradation
     main.remove();
 
     await new Promise((r) => setTimeout(r, 50));
 
-    const degraded = request.diagnostics!.progressiveMatches.filter((m) => m.degraded);
-    expect(degraded.length).toBeGreaterThan(0);
+    const lostOrDegraded = request.diagnostics!.events.filter(
+      (m) => m.type === "degraded" || m.type === "lost-match",
+    );
+    expect(lostOrDegraded.length).toBeGreaterThan(0);
 
     request.cancel();
     await request.promise;
@@ -892,7 +894,7 @@ describe("FoQueryRequest", () => {
     request.cancel();
     await request.promise;
 
-    const timestamps = request.diagnostics!.progressiveMatches.map((m) => m.timestamp);
+    const timestamps = request.diagnostics!.events.map((m) => m.timestamp);
     for (let i = 1; i < timestamps.length; i++) {
       expect(timestamps[i]).toBeGreaterThanOrEqual(timestamps[i - 1]);
     }
@@ -917,13 +919,13 @@ describe("FoQueryRequest", () => {
     expect(status).toBe(RequestStatus.Succeeded);
 
     // Further tree changes after resolve shouldn't add progressive entries
-    const progressiveCountAtResolve = request.diagnostics!.progressiveMatches.length;
+    const progressiveCountAtResolve = request.diagnostics!.events.length;
 
     const el2 = document.createElement("button");
     document.body.appendChild(el2);
     main.appendLeaf(new FoQueryLeafNode(["DefaultItem"], rootNode.root), el2);
 
-    expect(request.diagnostics!.progressiveMatches.length).toBe(progressiveCountAtResolve);
+    expect(request.diagnostics!.events.length).toBe(progressiveCountAtResolve);
 
     document.body.removeChild(el);
     document.body.removeChild(el2);
@@ -944,7 +946,7 @@ describe("FoQueryRequest", () => {
     rootNode.appendParent(main);
     await new Promise((r) => setTimeout(r, 20));
 
-    const countAfterMain = request.diagnostics!.progressiveMatches.length;
+    const countAfterMain = request.diagnostics!.events.length;
 
     // Step 2: add sidebar — deeper match
     const sidebar = new FoQueryParentNode("sidebar", rootNode.root);
@@ -958,10 +960,10 @@ describe("FoQueryRequest", () => {
     await new Promise((r) => setTimeout(r, 20));
 
     // We should have progressive entries, each getting closer
-    expect(request.diagnostics!.progressiveMatches.length).toBeGreaterThan(countAfterMain);
+    expect(request.diagnostics!.events.length).toBeGreaterThan(countAfterMain);
 
     // None should be degraded
-    const degraded = request.diagnostics!.progressiveMatches.filter((m) => m.degraded);
+    const degraded = request.diagnostics!.events.filter((m) => m.type === "degraded");
     expect(degraded.length).toBe(0);
 
     request.cancel();
@@ -1079,6 +1081,466 @@ describe("FoQueryRequest", () => {
     const status2 = await req2.promise;
     expect(status2).toBe(RequestStatus.Canceled);
     expect(req1.status).toBe(RequestStatus.Succeeded); // unchanged
+
+    document.body.removeChild(el);
+  });
+
+  // --- Check callbacks ---
+
+  it("check callback on leaf: delays focus until check returns true", async () => {
+    const rootNode = new FoQueryRootNode(window);
+    const main = new FoQueryParentNode("main", rootNode.root);
+    rootNode.appendParent(main);
+
+    const el = document.createElement("button");
+    document.body.appendChild(el);
+    const leaf = new FoQueryLeafNode(["Item"], rootNode.root);
+    main.appendLeaf(leaf, el);
+
+    let ready = false;
+    leaf.registerCheck(() => ready);
+
+    const request = new FoQueryRequest("//main/Item", rootNode.root);
+
+    // Should be polling, not yet resolved
+    await new Promise((r) => setTimeout(r, 80));
+    expect(request.status).toBe(RequestStatus.Waiting);
+
+    // Make check pass
+    ready = true;
+
+    // Wait for poll cycle to pick it up
+    await new Promise((r) => setTimeout(r, 80));
+    expect(request.status).toBe(RequestStatus.Succeeded);
+    document.body.removeChild(el);
+  });
+
+  it("check callback on parent: applies to all leaves under that parent", async () => {
+    const rootNode = new FoQueryRootNode(window);
+    const main = new FoQueryParentNode("main", rootNode.root);
+    rootNode.appendParent(main);
+
+    const el = document.createElement("button");
+    document.body.appendChild(el);
+    main.appendLeaf(new FoQueryLeafNode(["Item"], rootNode.root), el);
+
+    let ready = false;
+    main.registerCheck(() => ready);
+
+    const request = new FoQueryRequest("//main/Item", rootNode.root);
+
+    await new Promise((r) => setTimeout(r, 80));
+    expect(request.status).toBe(RequestStatus.Waiting);
+
+    ready = true;
+
+    await new Promise((r) => setTimeout(r, 80));
+    expect(request.status).toBe(RequestStatus.Succeeded);
+    document.body.removeChild(el);
+  });
+
+  it("check callback on root: applies to all leaves", async () => {
+    const rootNode = new FoQueryRootNode(window);
+    const main = new FoQueryParentNode("main", rootNode.root);
+    rootNode.appendParent(main);
+
+    const el = document.createElement("button");
+    document.body.appendChild(el);
+    main.appendLeaf(new FoQueryLeafNode(["Item"], rootNode.root), el);
+
+    let ready = false;
+    rootNode.registerCheck(() => ready);
+
+    const request = new FoQueryRequest("//main/Item", rootNode.root);
+
+    await new Promise((r) => setTimeout(r, 80));
+    expect(request.status).toBe(RequestStatus.Waiting);
+
+    ready = true;
+
+    await new Promise((r) => setTimeout(r, 80));
+    expect(request.status).toBe(RequestStatus.Succeeded);
+    document.body.removeChild(el);
+  });
+
+  it("all check callbacks must pass: leaf + parent + root", async () => {
+    const rootNode = new FoQueryRootNode(window);
+    const main = new FoQueryParentNode("main", rootNode.root);
+    rootNode.appendParent(main);
+
+    const el = document.createElement("button");
+    document.body.appendChild(el);
+    main.appendLeaf(new FoQueryLeafNode(["Item"], rootNode.root), el);
+
+    let leafReady = false;
+    let parentReady = false;
+    const rootReady = true;
+    rootNode.registerCheck(() => rootReady);
+    main.registerCheck(() => parentReady);
+    // Register on the leaf via its data node directly
+    main.node.leafs.forEach((l) => l.checkCallbacks.add(() => leafReady));
+
+    const request = new FoQueryRequest("//main/Item", rootNode.root);
+
+    await new Promise((r) => setTimeout(r, 80));
+    expect(request.status).toBe(RequestStatus.Waiting);
+
+    // Only leaf ready — not enough
+    leafReady = true;
+    await new Promise((r) => setTimeout(r, 80));
+    expect(request.status).toBe(RequestStatus.Waiting);
+
+    // Leaf + parent ready — still not enough (root blocks... wait, root is true)
+    parentReady = true;
+    await new Promise((r) => setTimeout(r, 80));
+    expect(request.status).toBe(RequestStatus.Succeeded);
+
+    document.body.removeChild(el);
+  });
+
+  it("unregisterCheck removes the callback", async () => {
+    const rootNode = new FoQueryRootNode(window);
+    const main = new FoQueryParentNode("main", rootNode.root);
+    rootNode.appendParent(main);
+
+    const el = document.createElement("button");
+    document.body.appendChild(el);
+    main.appendLeaf(new FoQueryLeafNode(["Item"], rootNode.root), el);
+
+    const unregister = main.registerCheck(() => false);
+    const request = new FoQueryRequest("//main/Item", rootNode.root);
+
+    await new Promise((r) => setTimeout(r, 80));
+    expect(request.status).toBe(RequestStatus.Waiting);
+
+    // Unregister — should now pass
+    unregister();
+
+    await new Promise((r) => setTimeout(r, 80));
+    expect(request.status).toBe(RequestStatus.Succeeded);
+    document.body.removeChild(el);
+  });
+
+  it("polling stops when request is canceled", async () => {
+    const rootNode = new FoQueryRootNode(window);
+    const main = new FoQueryParentNode("main", rootNode.root);
+    rootNode.appendParent(main);
+
+    const el = document.createElement("button");
+    document.body.appendChild(el);
+    main.appendLeaf(new FoQueryLeafNode(["Item"], rootNode.root), el);
+
+    const checkSpy = vi.fn().mockReturnValue(false);
+    main.registerCheck(checkSpy);
+
+    const request = new FoQueryRequest("//main/Item", rootNode.root);
+
+    await new Promise((r) => setTimeout(r, 80));
+    expect(request.status).toBe(RequestStatus.Waiting);
+    const callsBefore = checkSpy.mock.calls.length;
+
+    request.cancel();
+    await request.promise;
+
+    // Wait to verify polling stopped
+    await new Promise((r) => setTimeout(r, 100));
+    expect(checkSpy.mock.calls.length).toBe(callsBefore);
+
+    document.body.removeChild(el);
+  });
+
+  it("polling with multiple candidates: first to pass check wins", async () => {
+    const rootNode = new FoQueryRootNode(window);
+    const main = new FoQueryParentNode("main", rootNode.root);
+    rootNode.appendParent(main);
+
+    const el1 = document.createElement("button");
+    const el2 = document.createElement("button");
+    document.body.appendChild(el1);
+    document.body.appendChild(el2);
+    const leaf1 = new FoQueryLeafNode(["Item"], rootNode.root);
+    const leaf2 = new FoQueryLeafNode(["Item"], rootNode.root);
+    main.appendLeaf(leaf1, el1);
+    main.appendLeaf(leaf2, el2);
+
+    // el1 is not ready, el2 becomes ready
+    leaf1.registerCheck(() => false);
+    let el2Ready = false;
+    leaf2.registerCheck(() => el2Ready);
+
+    const focusSpy1 = vi.spyOn(el1, "focus");
+    const focusSpy2 = vi.spyOn(el2, "focus");
+
+    const request = new FoQueryRequest("//main/Item", rootNode.root);
+
+    await new Promise((r) => setTimeout(r, 80));
+    expect(request.status).toBe(RequestStatus.Waiting);
+
+    el2Ready = true;
+
+    await new Promise((r) => setTimeout(r, 80));
+    expect(request.status).toBe(RequestStatus.Succeeded);
+    expect(focusSpy1).not.toHaveBeenCalled();
+    expect(focusSpy2).toHaveBeenCalled();
+
+    document.body.removeChild(el1);
+    document.body.removeChild(el2);
+  });
+
+  it("tree mutation during polling cancels poll and re-evaluates", async () => {
+    const rootNode = new FoQueryRootNode(window);
+    const main = new FoQueryParentNode("main", rootNode.root);
+    rootNode.appendParent(main);
+
+    const el1 = document.createElement("button");
+    document.body.appendChild(el1);
+    const leaf1 = new FoQueryLeafNode(["Item"], rootNode.root);
+    main.appendLeaf(leaf1, el1);
+
+    // el1 never becomes ready
+    leaf1.registerCheck(() => false);
+
+    const request = new FoQueryRequest("//main/Item", rootNode.root);
+
+    await new Promise((r) => setTimeout(r, 80));
+    expect(request.status).toBe(RequestStatus.Waiting);
+
+    // Add a new leaf (tree mutation) — this triggers _matchPath via subscription
+    const el2 = document.createElement("button");
+    document.body.appendChild(el2);
+    const leaf2 = new FoQueryLeafNode(["Item"], rootNode.root);
+    main.appendLeaf(leaf2, el2);
+
+    // el2 has no check callbacks, so it should be focusable immediately
+    // _matchPath re-evaluates, finds both candidates, el2 passes checks, focuses el2
+    await new Promise((r) => setTimeout(r, 80));
+    expect(request.status).toBe(RequestStatus.Succeeded);
+
+    expect(request.diagnostics!.candidates.length).toBe(2);
+
+    document.body.removeChild(el1);
+    document.body.removeChild(el2);
+  });
+
+  it("check callback receives the actual HTML element", async () => {
+    const rootNode = new FoQueryRootNode(window);
+    const main = new FoQueryParentNode("main", rootNode.root);
+    rootNode.appendParent(main);
+
+    const el = document.createElement("button");
+    el.setAttribute("aria-hidden", "true");
+    document.body.appendChild(el);
+    main.appendLeaf(new FoQueryLeafNode(["Item"], rootNode.root), el);
+
+    // Check simulating aria-hidden ancestor detection
+    main.registerCheck((element) => {
+      return !element.closest("[aria-hidden=true]");
+    });
+
+    const request = new FoQueryRequest("//main/Item", rootNode.root);
+
+    await new Promise((r) => setTimeout(r, 80));
+    expect(request.status).toBe(RequestStatus.Waiting);
+
+    // Remove aria-hidden
+    el.removeAttribute("aria-hidden");
+
+    await new Promise((r) => setTimeout(r, 80));
+    expect(request.status).toBe(RequestStatus.Succeeded);
+    document.body.removeChild(el);
+  });
+
+  // --- Check callback diagnostics ---
+
+  it("diagnostics: records pending event when check fails, ready event when it passes", async () => {
+    const rootNode = new FoQueryRootNode(window);
+    const main = new FoQueryParentNode("main", rootNode.root);
+    rootNode.appendParent(main);
+
+    const el = document.createElement("button");
+    document.body.appendChild(el);
+    const leaf = new FoQueryLeafNode(["SelectedItem"], rootNode.root);
+    main.appendLeaf(leaf, el);
+
+    let ready = false;
+    leaf.registerCheck(() => ready);
+
+    const request = new FoQueryRequest("//main/SelectedItem", rootNode.root);
+
+    await new Promise((r) => setTimeout(r, 80));
+    expect(request.diagnostics!.events.length).toBe(1);
+    const evt0 = request.diagnostics!.events[0];
+    expect(evt0.type).toBe("matched-pending-checks");
+    if (evt0.type === "matched-pending-checks") {
+      expect(evt0.leafNames).toEqual(["SelectedItem"]);
+    }
+
+    ready = true;
+    await new Promise((r) => setTimeout(r, 80));
+
+    expect(request.status).toBe(RequestStatus.Succeeded);
+    expect(request.diagnostics!.events.length).toBe(3);
+    expect(request.diagnostics!.events[1].type).toBe("checks-passed");
+    expect(request.diagnostics!.events[2].type).toBe("succeeded");
+
+    document.body.removeChild(el);
+  });
+
+  it("diagnostics: only succeeded event when there are no check callbacks", async () => {
+    const rootNode = new FoQueryRootNode(window);
+    const main = new FoQueryParentNode("main", rootNode.root);
+    rootNode.appendParent(main);
+
+    const el = document.createElement("button");
+    document.body.appendChild(el);
+    main.appendLeaf(new FoQueryLeafNode(["Item"], rootNode.root), el);
+
+    const request = new FoQueryRequest("//main/Item", rootNode.root);
+    await request.promise;
+
+    expect(request.diagnostics!.events.length).toBe(1);
+    expect(request.diagnostics!.events[0].type).toBe("succeeded");
+
+    document.body.removeChild(el);
+  });
+
+  it("diagnostics: pending for multiple candidates, ready for the one that passes first", async () => {
+    const rootNode = new FoQueryRootNode(window);
+    const main = new FoQueryParentNode("main", rootNode.root);
+    rootNode.appendParent(main);
+
+    const el1 = document.createElement("button");
+    const el2 = document.createElement("button");
+    document.body.appendChild(el1);
+    document.body.appendChild(el2);
+
+    const leaf1 = new FoQueryLeafNode(["ItemA"], rootNode.root);
+    const leaf2 = new FoQueryLeafNode(["ItemB"], rootNode.root);
+    main.appendLeaf(leaf1, el1);
+    main.appendLeaf(leaf2, el2);
+
+    leaf1.registerCheck(() => false);
+    let leaf2Ready = false;
+    leaf2.registerCheck(() => leaf2Ready);
+
+    const request = new FoQueryRequest("//main/*", rootNode.root);
+
+    await new Promise((r) => setTimeout(r, 80));
+    // Both should have pending events
+    const pending = request.diagnostics!.events.filter(
+      (e): e is Extract<typeof e, { type: "matched-pending-checks" }> =>
+        e.type === "matched-pending-checks",
+    );
+    expect(pending.length).toBe(2);
+    expect(pending.map((e) => e.leafNames[0]).sort()).toEqual(["ItemA", "ItemB"]);
+
+    leaf2Ready = true;
+    await new Promise((r) => setTimeout(r, 80));
+
+    expect(request.status).toBe(RequestStatus.Succeeded);
+    const readyEvents = request.diagnostics!.events.filter(
+      (e): e is Extract<typeof e, { type: "checks-passed" }> => e.type === "checks-passed",
+    );
+    expect(readyEvents.length).toBe(1);
+    expect(readyEvents[0].leafNames).toEqual(["ItemB"]);
+
+    document.body.removeChild(el1);
+    document.body.removeChild(el2);
+  });
+
+  it("diagnostics: tree mutation during polling records new pending and ready events", async () => {
+    const rootNode = new FoQueryRootNode(window);
+    const main = new FoQueryParentNode("main", rootNode.root);
+    rootNode.appendParent(main);
+
+    const el1 = document.createElement("button");
+    document.body.appendChild(el1);
+    const leaf1 = new FoQueryLeafNode(["BlockedItem"], rootNode.root);
+    main.appendLeaf(leaf1, el1);
+
+    leaf1.registerCheck(() => false);
+
+    const request = new FoQueryRequest("//main/*", rootNode.root);
+
+    await new Promise((r) => setTimeout(r, 80));
+    expect(request.diagnostics!.events.length).toBe(1);
+    expect(request.diagnostics!.events[0].type).toBe("matched-pending-checks");
+
+    // Add a new leaf without check callbacks — tree mutation triggers _matchPath
+    const el2 = document.createElement("button");
+    document.body.appendChild(el2);
+    main.appendLeaf(new FoQueryLeafNode(["FreeItem"], rootNode.root), el2);
+
+    // _matchPath re-evaluates: el2 has no checks, passes immediately
+    await new Promise((r) => setTimeout(r, 80));
+    expect(request.status).toBe(RequestStatus.Succeeded);
+
+    // The original pending event is preserved, plus a new one from re-evaluation
+    // after the tree mutation (BlockedItem still fails checks on re-evaluate)
+    const pending = request.diagnostics!.events.filter(
+      (e): e is Extract<typeof e, { type: "matched-pending-checks" }> =>
+        e.type === "matched-pending-checks",
+    );
+    expect(pending.length).toBeGreaterThanOrEqual(1);
+    expect(pending[0].leafNames).toEqual(["BlockedItem"]);
+
+    document.body.removeChild(el1);
+    document.body.removeChild(el2);
+  });
+
+  it("diagnostics: canceled request preserves check events recorded before cancellation", async () => {
+    const rootNode = new FoQueryRootNode(window);
+    const main = new FoQueryParentNode("main", rootNode.root);
+    rootNode.appendParent(main);
+
+    const el = document.createElement("button");
+    document.body.appendChild(el);
+    main.appendLeaf(new FoQueryLeafNode(["Item"], rootNode.root), el);
+
+    main.registerCheck(() => false);
+
+    const request = new FoQueryRequest("//main/Item", rootNode.root);
+
+    await new Promise((r) => setTimeout(r, 80));
+    expect(request.diagnostics!.events.length).toBe(1);
+    expect(request.diagnostics!.events[0].type).toBe("matched-pending-checks");
+
+    request.cancel();
+    await request.promise;
+
+    expect(request.status).toBe(RequestStatus.Canceled);
+    // Pending event is preserved, plus the canceled resolution event
+    expect(request.diagnostics!.events.length).toBe(2);
+    expect(request.diagnostics!.events[0].type).toBe("matched-pending-checks");
+    expect(request.diagnostics!.events[1].type).toBe("canceled");
+
+    document.body.removeChild(el);
+  });
+
+  it("diagnostics: check event timestamps are monotonically increasing", async () => {
+    const rootNode = new FoQueryRootNode(window);
+    const main = new FoQueryParentNode("main", rootNode.root);
+    rootNode.appendParent(main);
+
+    const el = document.createElement("button");
+    document.body.appendChild(el);
+    const leaf = new FoQueryLeafNode(["Item"], rootNode.root);
+    main.appendLeaf(leaf, el);
+
+    let ready = false;
+    leaf.registerCheck(() => ready);
+
+    const request = new FoQueryRequest("//main/Item", rootNode.root);
+
+    await new Promise((r) => setTimeout(r, 80));
+    ready = true;
+    await new Promise((r) => setTimeout(r, 80));
+
+    const events = request.diagnostics!.events;
+    expect(events.length).toBe(3);
+    for (let i = 1; i < events.length; i++) {
+      expect(events[i].timestamp).toBeGreaterThanOrEqual(events[i - 1].timestamp);
+    }
 
     document.body.removeChild(el);
   });

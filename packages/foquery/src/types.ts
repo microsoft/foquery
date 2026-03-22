@@ -2,12 +2,15 @@
  * Copyright (c) Microsoft Corporation. All rights reserved.
  * Licensed under the MIT License.
  */
+export type CheckCallback = (element: HTMLElement) => boolean;
+
 export interface LeafNode {
   names: string[];
   xmlElements: Map<string, XmlElement>;
   element: WeakRef<HTMLElement>;
   parent: ParentNode | undefined;
   focus?: () => boolean;
+  checkCallbacks: Set<CheckCallback>;
   lastFocused: number | undefined;
 }
 
@@ -19,6 +22,7 @@ export interface ParentNode {
   leafs: Set<LeafNode>;
   focus?: string;
   arbiter?: (candidates: XmlElement[]) => XmlElement;
+  checkCallbacks: Set<CheckCallback>;
   lastFocused: number | undefined;
 }
 
@@ -41,6 +45,7 @@ export interface XmlElement extends Element {
 
 export interface RequestFocusOptions {
   timeout?: number;
+  focusOptions?: FocusOptions;
 }
 
 export interface FoQueryParentNode {
@@ -50,6 +55,7 @@ export interface FoQueryParentNode {
   appendLeaf(leaf: FoQueryLeafNode, element: HTMLElement): void;
   query(xpath: string): XmlElement[];
   requestFocus(xpath: string, options?: RequestFocusOptions): Request;
+  registerCheck(callback: CheckCallback): () => void;
   rename(name: string): void;
   remove(): void;
 }
@@ -57,6 +63,7 @@ export interface FoQueryParentNode {
 export interface FoQueryLeafNode {
   readonly leaf: LeafNode;
   readonly onFocusIn: () => void;
+  registerCheck(callback: CheckCallback): () => void;
   rename(names: string[]): void;
   remove(): void;
 }
@@ -68,6 +75,7 @@ export interface FoQueryRootNode {
   appendLeaf(leaf: FoQueryLeafNode, element: HTMLElement): void;
   query(xpath: string): XmlElement[];
   requestFocus(xpath: string, options?: RequestFocusOptions): Request;
+  registerCheck(callback: CheckCallback): () => void;
 }
 
 export interface Request {
@@ -87,12 +95,16 @@ export interface RequestDiagnostics {
   matchedElements: XmlElement[];
   candidates: XmlElement[];
   winner: XmlElement | undefined;
-  progressiveMatches: ProgressiveMatch[];
+  events: DiagnosticEvent[];
 }
 
-export interface ProgressiveMatch {
-  xpath: string;
-  matched: boolean;
-  timestamp: number;
-  degraded?: boolean;
-}
+export type DiagnosticEvent =
+  | { type: "partial-match"; xpath: string; timestamp: number }
+  | { type: "degraded"; xpath: string; timestamp: number }
+  | { type: "lost-match"; timestamp: number }
+  | { type: "matched-pending-checks"; leafNames: string[]; timestamp: number }
+  | { type: "checks-passed"; leafNames: string[]; timestamp: number }
+  | { type: "succeeded"; timestamp: number }
+  | { type: "canceled"; timestamp: number }
+  | { type: "timed-out"; timestamp: number }
+  | { type: "no-candidates"; timestamp: number };

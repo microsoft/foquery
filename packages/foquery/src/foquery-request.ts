@@ -25,6 +25,8 @@ export class FoQueryRequest implements Types.Request {
   private _cancelOnInteraction: (() => void) | undefined;
   private _markOwnFocus: (() => void) | undefined;
   private _hasPendingStringFocus = false;
+  private _pollTimerId: ReturnType<typeof setInterval> | undefined;
+  private _focusOptions: FocusOptions | undefined;
 
   public readonly xpath: string;
   public readonly promise: Promise<Types.RequestStatus>;
@@ -39,6 +41,7 @@ export class FoQueryRequest implements Types.Request {
     this.xpath = xpath;
     this._contextNode = node;
     this._root = "subscribe" in node ? (node as Types.RootNode) : findRoot(node);
+    this._focusOptions = options?.focusOptions;
     this._simplifications = generateXPathSimplifications(xpath);
 
     // Cancel any previous active request globally
@@ -60,8 +63,18 @@ export class FoQueryRequest implements Types.Request {
       this._resolve = (status: Types.RequestStatus) => {
         delete this._resolve;
         this.status = status;
+        const now = Date.now();
         if (this.diagnostics) {
-          this.diagnostics.resolvedAt = Date.now();
+          this.diagnostics.resolvedAt = now;
+          const type: Types.DiagnosticEvent["type"] =
+            status === RequestStatus.Succeeded
+              ? "succeeded"
+              : status === RequestStatus.Canceled
+                ? "canceled"
+                : status === RequestStatus.TimedOut
+                  ? "timed-out"
+                  : "no-candidates";
+          this.diagnostics.events.push({ type, timestamp: now } as Types.DiagnosticEvent);
         }
         resolve(status);
       };
@@ -80,9 +93,12 @@ export class FoQueryRequest implements Types.Request {
     // Cancel on user interaction (click or focus movement not caused by this request)
     const doc = this._root.window.document;
     let ownFocus = false;
-    const cancelHandler = () => {
+    const cancelHandler = (e: Event) => {
       if (ownFocus) {
         ownFocus = false;
+        return;
+      }
+      if (e.target instanceof Element && e.target.closest("[data-foquery-ignore]")) {
         return;
       }
       this._resolve?.(RequestStatus.Canceled);
@@ -111,6 +127,7 @@ export class FoQueryRequest implements Types.Request {
     this._cancelOnInteraction?.();
     this._cancelOnInteraction = undefined;
     this._markOwnFocus = undefined;
+    this._stopPolling();
 
     if (this._timeoutId !== undefined) {
       clearTimeout(this._timeoutId);
@@ -127,6 +144,9 @@ export class FoQueryRequest implements Types.Request {
   }
 
   private _matchPath(): void {
+    // Stop any active check polling — tree changed, re-evaluate from scratch
+    this._stopPolling();
+
     this._effectiveLastFocused.clear();
 
     const matchedElements = this._query(this.xpath, this._contextNode);
@@ -146,7 +166,7 @@ export class FoQueryRequest implements Types.Request {
         matchedElements,
         candidates,
         winner,
-        progressiveMatches: [],
+        events: [],
       };
     } else {
       this.diagnostics.matchedElements = matchedElements;
@@ -219,26 +239,23 @@ export class FoQueryRequest implements Types.Request {
 
     if (bestDepth >= 0) {
       if (bestDepth > this._previousPartialDepth && this._previousPartialDepth >= 0) {
-        this.diagnostics!.progressiveMatches.push({
+        this.diagnostics!.events.push({
+          type: "degraded",
           xpath: bestXpath,
-          matched: true,
           timestamp: now,
-          degraded: true,
         });
       } else if (bestDepth !== this._previousPartialDepth) {
-        this.diagnostics!.progressiveMatches.push({
+        this.diagnostics!.events.push({
+          type: "partial-match",
           xpath: bestXpath,
-          matched: true,
           timestamp: now,
         });
       }
       this._previousPartialDepth = bestDepth;
     } else if (this._previousPartialDepth >= 0) {
-      this.diagnostics!.progressiveMatches.push({
-        xpath: "",
-        matched: false,
+      this.diagnostics!.events.push({
+        type: "lost-match",
         timestamp: now,
-        degraded: true,
       });
       this._previousPartialDepth = -1;
     }
@@ -302,27 +319,115 @@ export class FoQueryRequest implements Types.Request {
   }
 
   private _focusCandidate(xmlElement: Types.XmlElement): void {
-    if (xmlElement.foQueryLeafNode) {
-      const leafFocus = xmlElement.foQueryLeafNode.focus;
+    if (!xmlElement.foQueryLeafNode) return;
 
-      if (leafFocus) {
-        const result = leafFocus();
-        if (result) {
-          this._resolve?.(RequestStatus.Succeeded);
+    const leaf = xmlElement.foQueryLeafNode;
+    const el = leaf.element.deref();
+    if (!el) return;
+
+    if (this._passesAllChecks(leaf, el)) {
+      this._doFocusLeaf(leaf, el);
+      return;
+    }
+
+    // Record pending for all candidates that failed checks
+    this._recordPendingChecks();
+
+    // Some check failed — start polling all current candidates
+    this._startPolling();
+  }
+
+  private _passesAllChecks(leaf: Types.LeafNode, el: HTMLElement): boolean {
+    // Leaf's own check callbacks
+    for (const cb of leaf.checkCallbacks) {
+      if (!cb(el)) return false;
+    }
+    // Walk up parent chain — each parent's check callbacks apply to all its leaves
+    for (let p = leaf.parent; p; p = p.parent) {
+      for (const cb of p.checkCallbacks) {
+        if (!cb(el)) return false;
+      }
+    }
+    return true;
+  }
+
+  private _doFocusLeaf(leaf: Types.LeafNode, el: HTMLElement): void {
+    if (leaf.focus) {
+      const result = leaf.focus();
+      if (result) {
+        this._resolve?.(RequestStatus.Succeeded);
+        return;
+      }
+    }
+    this._markOwnFocus?.();
+    el.focus(this._focusOptions);
+    this._resolve?.(RequestStatus.Succeeded);
+  }
+
+  private _startPolling(): void {
+    this._stopPolling();
+
+    const CHECK_INTERVAL = 50;
+
+    this._pollTimerId = setInterval(() => {
+      if (!this._resolve || !this.diagnostics) {
+        this._stopPolling();
+        return;
+      }
+
+      // Poll all current candidates
+      for (const xmlEl of this.diagnostics.candidates) {
+        const leaf = xmlEl.foQueryLeafNode;
+        if (!leaf) continue;
+        const el = leaf.element.deref();
+        if (!el) continue;
+
+        if (this._passesAllChecks(leaf, el)) {
+          this._stopPolling();
+          this._recordChecksReady(leaf);
+          this._doFocusLeaf(leaf, el);
           return;
         }
       }
+    }, CHECK_INTERVAL);
+  }
 
-      this._focusElement(xmlElement.foQueryLeafNode.element);
+  private _pendingCheckKeys = new Set<string>();
+
+  private _recordPendingChecks(): void {
+    if (!this.diagnostics) return;
+    const now = Date.now();
+    for (const xmlEl of this.diagnostics.candidates) {
+      const leaf = xmlEl.foQueryLeafNode;
+      if (!leaf) continue;
+      const key = leaf.names.join(",");
+      if (this._pendingCheckKeys.has(key)) continue;
+      const el = leaf.element.deref();
+      if (!el) continue;
+      if (!this._passesAllChecks(leaf, el)) {
+        this._pendingCheckKeys.add(key);
+        this.diagnostics.events.push({
+          type: "matched-pending-checks",
+          leafNames: leaf.names,
+          timestamp: now,
+        });
+      }
     }
   }
 
-  private _focusElement(ref: WeakRef<HTMLElement> | undefined): void {
-    const el = ref?.deref();
-    if (el) {
-      this._markOwnFocus?.();
-      el.focus({ focusVisible: true } as FocusOptions);
-      this._resolve?.(RequestStatus.Succeeded);
+  private _recordChecksReady(leaf: Types.LeafNode): void {
+    if (!this.diagnostics) return;
+    this.diagnostics.events.push({
+      type: "checks-passed",
+      leafNames: leaf.names,
+      timestamp: Date.now(),
+    });
+  }
+
+  private _stopPolling(): void {
+    if (this._pollTimerId !== undefined) {
+      clearInterval(this._pollTimerId);
+      this._pollTimerId = undefined;
     }
   }
 }
