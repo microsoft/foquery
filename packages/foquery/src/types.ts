@@ -7,7 +7,7 @@ export interface LeafNode {
   xmlElements: Map<string, XmlElement>;
   element: WeakRef<HTMLElement>;
   parent: ParentNode | undefined;
-  focus?: () => Promise<boolean>;
+  focus?: () => boolean;
   lastFocused: number | undefined;
 }
 
@@ -17,7 +17,7 @@ export interface ParentNode {
   parent: ParentNode | undefined;
   children: Set<ParentNode>;
   leafs: Set<LeafNode>;
-  focus?: string | (() => Promise<boolean>);
+  focus?: string;
   arbiter?: (candidates: XmlElement[]) => XmlElement;
   lastFocused: number | undefined;
 }

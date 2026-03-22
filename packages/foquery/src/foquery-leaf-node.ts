@@ -14,7 +14,7 @@ export class FoQueryLeafNode implements Types.FoQueryLeafNode {
   public readonly leaf: Types.LeafNode;
   public readonly onFocusIn: () => void;
 
-  constructor(names: string[], root: Types.RootNode, focus?: () => Promise<boolean>) {
+  constructor(names: string[], root: Types.RootNode, focus?: () => boolean) {
     this._root = root;
 
     this.leaf = {

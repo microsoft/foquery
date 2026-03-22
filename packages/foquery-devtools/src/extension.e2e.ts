@@ -452,6 +452,51 @@ test.describe("devtools panel UI against live example app", () => {
     });
   });
 
+  test.describe("progressive focus with string focus parent", () => {
+    test("//messages waits for children to mount via Progressive, then focuses", async () => {
+      // Type //messages in the devtools query
+      await panel.fill("#xpath-input", "//messages");
+      await panel.waitForFunction(
+        () => document.getElementById("xpath-results")?.textContent === "1 result",
+        undefined,
+        { timeout: 2000 },
+      );
+
+      // Click Progressive button in the app — this removes the content section
+      await app.click("text=Progressive");
+
+      // Wait for content to be removed (step 0)
+      await panel.waitForFunction(
+        () => document.getElementById("xpath-results")?.textContent === "0 results",
+        undefined,
+        { timeout: 3000 },
+      );
+
+      // Click Focus — the mousedown from Progressive already happened,
+      // messages doesn't exist yet so status should be "waiting"
+      await panel.click("#focus-btn");
+      await panel.waitForSelector("#diagnostics .diag-section", { timeout: 2000 });
+
+      const initialStatus = await panel.textContent("#diagnostics .diag-section .diag-item");
+      expect(initialStatus).toContain("waiting");
+
+      // The Progressive demo adds content back step by step via setTimeout.
+      // Wait for the request to resolve — messages will mount with
+      // focus="./thread/SelectedItem", and thread/SelectedItem will mount.
+      await panel.waitForFunction(
+        () => {
+          const items = document.querySelectorAll("#diagnostics .diag-section .diag-item");
+          return items.length > 0 && items[0].textContent?.startsWith("succeeded");
+        },
+        undefined,
+        { timeout: 15000 },
+      );
+
+      const finalStatus = await panel.textContent("#diagnostics .diag-section .diag-item");
+      expect(finalStatus).toContain("succeeded");
+    });
+  });
+
   test.describe("app-triggered requests", () => {
     test("diagnostics panel shows status of app-triggered requestFocus", async () => {
       // Trigger a requestFocus from the app (not from devtools Focus button)

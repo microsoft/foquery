@@ -24,6 +24,7 @@ export class FoQueryRequest implements Types.Request {
   private _unsubscribe: (() => void) | undefined;
   private _cancelOnInteraction: (() => void) | undefined;
   private _markOwnFocus: (() => void) | undefined;
+  private _hasPendingStringFocus = false;
 
   public readonly xpath: string;
   public readonly promise: Promise<Types.RequestStatus>;
@@ -129,6 +130,7 @@ export class FoQueryRequest implements Types.Request {
     this._effectiveLastFocused.clear();
 
     const matchedElements = this._query(this.xpath, this._contextNode);
+    this._hasPendingStringFocus = false;
     const candidates = this._collectCandidates(matchedElements);
 
     this._sortByLastFocused(candidates);
@@ -159,7 +161,13 @@ export class FoQueryRequest implements Types.Request {
     }
 
     // No full match, no timeout — resolve NoCandidates if we had matched elements
-    if (matchedElements.length > 0 && candidates.length === 0 && this._timeoutId === undefined) {
+    // BUT only if no matched parent has a string focus that could produce candidates later
+    if (
+      matchedElements.length > 0 &&
+      candidates.length === 0 &&
+      !this._hasPendingStringFocus &&
+      this._timeoutId === undefined
+    ) {
       this._resolve?.(RequestStatus.NoCandidates);
       return;
     }
@@ -268,15 +276,15 @@ export class FoQueryRequest implements Types.Request {
 
         if (parentNode.focus === undefined) continue;
 
-        if (typeof parentNode.focus === "function") {
-          this._setEffectiveLastFocused(xmlElement, fallbackParent);
-          candidates.push(xmlElement);
-        } else {
-          const subCandidates = this._collectCandidates(
-            this._query(parentNode.focus, parentNode),
-            parentNode,
-          );
+        const subCandidates = this._collectCandidates(
+          this._query(parentNode.focus, parentNode),
+          parentNode,
+        );
 
+        if (subCandidates.length === 0) {
+          // String focus didn't match yet — children may mount later
+          this._hasPendingStringFocus = true;
+        } else {
           this._sortByLastFocused(subCandidates);
 
           if (subCandidates.length > 1 && parentNode.arbiter) {
@@ -298,35 +306,14 @@ export class FoQueryRequest implements Types.Request {
       const leafFocus = xmlElement.foQueryLeafNode.focus;
 
       if (leafFocus) {
-        leafFocus()
-          .then((result) => {
-            if (result) {
-              this._resolve?.(RequestStatus.Succeeded);
-            } else {
-              this._focusElement(xmlElement.foQueryLeafNode?.element);
-            }
-          })
-          .catch(() => {
-            this._focusElement(xmlElement.foQueryLeafNode?.element);
-          });
-        return;
+        const result = leafFocus();
+        if (result) {
+          this._resolve?.(RequestStatus.Succeeded);
+          return;
+        }
       }
 
       this._focusElement(xmlElement.foQueryLeafNode.element);
-    } else if (xmlElement.foQueryParentNode) {
-      const parentFocus = xmlElement.foQueryParentNode.focus;
-
-      if (typeof parentFocus === "function") {
-        parentFocus()
-          .then((result) => {
-            if (result) {
-              this._resolve?.(RequestStatus.Succeeded);
-            }
-          })
-          .catch(() => {
-            // Parent focus function failed — nothing to fall back to
-          });
-      }
     }
   }
 
