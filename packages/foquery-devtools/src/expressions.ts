@@ -217,8 +217,10 @@ export function activeRequestExpression(globalName: string): string {
     ${serializeElSnippet()}
     ${serializeDiagSnippet()}
 
-    // If resolved, dispatch focusin for the winner (page may not be OS-focused)
-    if (req.status !== 1) {
+    // If resolved and not yet dispatched, dispatch focusin for the winner
+    // (page may not be OS-focused, so el.focus() might have been a no-op)
+    if (req.status !== 1 && !req.__focusinDispatched) {
+      req.__focusinDispatched = true;
       var diag = req.diagnostics;
       if (diag && diag.winner && diag.winner.foQueryLeafNode) {
         var winnerEl = diag.winner.foQueryLeafNode.element.deref();

@@ -8,7 +8,7 @@ import { FoQueryContext } from "./foquery-context";
 
 export function useFoQuery<T extends HTMLElement>(
   names: string[],
-  focus?: () => Promise<boolean>,
+  focus?: () => boolean,
 ): React.RefCallback<T> {
   const foQueryContextProps = useContext(FoQueryContext);
   const leafNodeRef = useRef<FoQueryLeafNode | null>(null);

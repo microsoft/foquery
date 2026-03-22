@@ -10,7 +10,7 @@ import { FoQueryContext, FoQueryContextProps } from "./foquery-context";
 
 export interface FoQueryParentProps {
   name: string;
-  focus?: string | (() => Promise<boolean>);
+  focus?: string;
   arbiter?: (candidates: Types.XmlElement[]) => Types.XmlElement;
   children?: React.ReactNode;
 }

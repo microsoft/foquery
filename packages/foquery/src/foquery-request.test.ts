@@ -36,7 +36,7 @@ describe("FoQueryRequest", () => {
     rootNode.appendParent(main);
 
     const el = document.createElement("button");
-    const customFocus = vi.fn().mockResolvedValue(true);
+    const customFocus = vi.fn().mockReturnValue(true);
     const leaf = new FoQueryLeafNode(["SelectedItem"], rootNode.root, customFocus);
     main.appendLeaf(leaf, el);
 
@@ -56,7 +56,7 @@ describe("FoQueryRequest", () => {
 
     const el = document.createElement("button");
     document.body.appendChild(el);
-    const customFocus = vi.fn().mockResolvedValue(false);
+    const customFocus = vi.fn().mockReturnValue(false);
     const leaf = new FoQueryLeafNode(["SelectedItem"], rootNode.root, customFocus);
     main.appendLeaf(leaf, el);
 
@@ -82,19 +82,6 @@ describe("FoQueryRequest", () => {
     expect(request.diagnostics!.matchedElements.length).toBe(1);
     expect(request.diagnostics!.candidates.length).toBe(0);
     expect(request.diagnostics!.winner).toBeUndefined();
-  });
-
-  it("focuses parent node with function focus property", async () => {
-    const rootNode = new FoQueryRootNode(window);
-    const parentFocus = vi.fn().mockResolvedValue(true);
-    const main = new FoQueryParentNode("main", rootNode.root, { focus: parentFocus });
-    rootNode.appendParent(main);
-
-    const request = new FoQueryRequest("//main", rootNode.root);
-    const status = await request.promise;
-
-    expect(status).toBe(RequestStatus.Succeeded);
-    expect(parentFocus).toHaveBeenCalled();
   });
 
   it("evaluates string focus as relative xpath on parent", async () => {
@@ -561,6 +548,35 @@ describe("FoQueryRequest", () => {
     expect(status).toBe(RequestStatus.NoCandidates);
     expect(request.diagnostics!.matchedElements.length).toBe(1);
     expect(request.diagnostics!.candidates.length).toBe(0);
+  });
+
+  it("parent axis (..) waits when parent has string focus with no current sub-candidates", async () => {
+    const rootNode = new FoQueryRootNode(window);
+
+    const messages = new FoQueryParentNode("messages", rootNode.root, {
+      focus: "./thread/SelectedItem",
+    });
+    rootNode.appendParent(messages);
+
+    // messages matched but ./thread/SelectedItem doesn't exist yet
+    // Should NOT resolve NoCandidates — should wait
+    const request = new FoQueryRequest("//messages", rootNode.root);
+
+    // Give it a tick to ensure it doesn't resolve immediately
+    await new Promise((r) => setTimeout(r, 50));
+    expect(request.status).toBe(RequestStatus.Waiting);
+
+    // Now add thread with SelectedItem — request should resolve
+    const thread = new FoQueryParentNode("thread", rootNode.root);
+    messages.appendParent(thread);
+
+    const el = document.createElement("button");
+    document.body.appendChild(el);
+    thread.appendLeaf(new FoQueryLeafNode(["SelectedItem"], rootNode.root), el);
+
+    const status = await request.promise;
+    expect(status).toBe(RequestStatus.Succeeded);
+    document.body.removeChild(el);
   });
 
   // --- Parent-bound with string focus ---

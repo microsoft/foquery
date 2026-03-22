@@ -42,21 +42,13 @@ export class FoQueryDOMRoot {
     this._observer.observe(element, { childList: true, subtree: true });
   }
 
-  public appendParent(
-    element: HTMLElement,
-    name: string,
-    focus?: string | (() => Promise<boolean>),
-  ): FoQueryDOMParent {
+  public appendParent(element: HTMLElement, name: string, focus?: string): FoQueryDOMParent {
     const child = new FoQueryParentNode(name, this.root, focus ? { focus } : undefined);
     this._rootNode.appendParent(child);
     return new FoQueryDOMParent(element, child, this.root);
   }
 
-  public appendLeaf(
-    element: HTMLElement,
-    names: string[],
-    focus?: () => Promise<boolean>,
-  ): FoQueryDOMLeaf {
+  public appendLeaf(element: HTMLElement, names: string[], focus?: () => boolean): FoQueryDOMLeaf {
     const leaf = new FoQueryLeafNode(names, this.root, focus);
     this._rootNode.appendLeaf(leaf, element);
     return new FoQueryDOMLeaf(element, leaf);

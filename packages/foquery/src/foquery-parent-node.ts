@@ -22,7 +22,7 @@ export class FoQueryParentNode implements Types.FoQueryParentNode {
     name: string,
     root: Types.RootNode,
     options?: {
-      focus?: string | (() => Promise<boolean>);
+      focus?: string;
       arbiter?: (candidates: Types.XmlElement[]) => Types.XmlElement;
     },
   ) {
