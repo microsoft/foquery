@@ -260,6 +260,21 @@ test.describe("devtools panel UI against live example app", () => {
       expect(results).toBe("1 result");
     });
 
+    test("pressing Enter in query input triggers Focus", async () => {
+      await panel.fill("#xpath-input", "//header/SelectedItem");
+      await panel.waitForFunction(
+        () => document.getElementById("focus-btn")?.hasAttribute("disabled") === false,
+        undefined,
+        { timeout: 2000 },
+      );
+
+      await panel.press("#xpath-input", "Enter");
+      await panel.waitForSelector("#diagnostics .diag-section", { timeout: 2000 });
+
+      const statusText = await panel.textContent("#diagnostics .diag-section .diag-item");
+      expect(statusText).toContain("succeeded");
+    });
+
     test("matched nodes are highlighted in the tree", async () => {
       await panel.fill("#xpath-input", "//compose");
       await panel.waitForFunction(

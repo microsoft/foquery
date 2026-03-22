@@ -638,6 +638,12 @@ xpathInput.addEventListener("input", () => {
   }, 150);
 });
 
+xpathInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    void runFocus();
+  }
+});
+
 focusBtn.addEventListener("click", () => {
   void runFocus();
 });
