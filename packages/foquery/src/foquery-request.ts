@@ -367,6 +367,10 @@ export class FoQueryRequest implements Types.Request {
 
   private _doFocusLeaf(leaf: Types.LeafNode, el: HTMLElement): void {
     if (leaf.focus) {
+      // Mark own focus before the callback so that any .focus() call inside
+      // the callback (on a child element) is recognized as ours and doesn't
+      // trigger a "focus-moved" cancellation.
+      this._markOwnFocus?.();
       const result = leaf.focus();
       if (result) {
         this._resolve?.(RequestStatus.Succeeded);

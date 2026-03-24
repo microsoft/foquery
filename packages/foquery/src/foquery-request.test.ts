@@ -49,6 +49,94 @@ describe("FoQueryRequest", () => {
     expect(focusSpy).not.toHaveBeenCalled();
   });
 
+  it("custom focus that calls element.focus() internally does not cancel the request", async () => {
+    const rootNode = new FoQueryRootNode(window);
+    const main = new FoQueryParentNode("main", rootNode.root);
+    rootNode.appendParent(main);
+
+    const el = document.createElement("button");
+    document.body.appendChild(el);
+
+    // Custom focus that calls el.focus() — this fires focusin on the document.
+    // Without _markOwnFocus before the callback, the cancel handler would
+    // see the focusin and cancel the request with "focus-moved".
+    const customFocus = vi.fn(() => {
+      el.focus();
+      return true;
+    });
+    const leaf = new FoQueryLeafNode(["SelectedItem"], rootNode.root, customFocus);
+    main.appendLeaf(leaf, el);
+
+    const request = new FoQueryRequest("//main/SelectedItem", rootNode.root);
+    const status = await request.promise;
+
+    expect(status).toBe(RequestStatus.Succeeded);
+    expect(customFocus).toHaveBeenCalled();
+    expect(request.diagnostics!.cancelReason).toBeUndefined();
+    document.body.removeChild(el);
+  });
+
+  it("custom focus returning false that calls element.focus() does not cancel the request", async () => {
+    const rootNode = new FoQueryRootNode(window);
+    const main = new FoQueryParentNode("main", rootNode.root);
+    rootNode.appendParent(main);
+
+    const el = document.createElement("button");
+    document.body.appendChild(el);
+
+    // Custom focus calls el.focus() but returns false — falls through to default path.
+    // The focusin from the callback's el.focus() should not cancel.
+    const customFocus = vi.fn(() => {
+      el.focus();
+      return false;
+    });
+    const leaf = new FoQueryLeafNode(["SelectedItem"], rootNode.root, customFocus);
+    main.appendLeaf(leaf, el);
+
+    const request = new FoQueryRequest("//main/SelectedItem", rootNode.root);
+    const status = await request.promise;
+
+    expect(status).toBe(RequestStatus.Succeeded);
+    expect(customFocus).toHaveBeenCalled();
+    document.body.removeChild(el);
+  });
+
+  it("custom focus returning false with external focus move cancels the request", async () => {
+    const rootNode = new FoQueryRootNode(window);
+    const main = new FoQueryParentNode("main", rootNode.root);
+    rootNode.appendParent(main);
+
+    // Leaf check blocks so that _doFocusLeaf is deferred to polling
+    const checkReady = false;
+    const otherBtn = document.createElement("button");
+    document.body.appendChild(otherBtn);
+
+    const el = document.createElement("button");
+    document.body.appendChild(el);
+
+    // Custom focus returns false — doesn't handle focus
+    const customFocus = vi.fn().mockReturnValue(false);
+    const leaf = new FoQueryLeafNode(["Item"], rootNode.root, customFocus);
+    main.appendLeaf(leaf, el);
+    leaf.registerCheck(() => checkReady);
+
+    const request = new FoQueryRequest("//main/Item", rootNode.root);
+
+    // Polling — check blocks
+    await new Promise((r) => setTimeout(r, 80));
+    expect(request.status).toBe(RequestStatus.Waiting);
+
+    // External focus move — should cancel the request
+    otherBtn.focus();
+
+    const status = await request.promise;
+    expect(status).toBe(RequestStatus.Canceled);
+    expect(request.diagnostics!.cancelReason).toBe("focus-moved");
+
+    document.body.removeChild(el);
+    document.body.removeChild(otherBtn);
+  });
+
   it("falls back to element.focus when custom focus returns false", async () => {
     const rootNode = new FoQueryRootNode(window);
     const main = new FoQueryParentNode("main", rootNode.root);
