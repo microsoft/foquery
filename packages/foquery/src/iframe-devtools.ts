@@ -417,7 +417,7 @@ function clearDevtoolsHighlight(win: Window & typeof globalThis): void {
     | { element?: Element; hadStyle?: boolean; savedStyle?: string }
     | undefined;
   const element = state?.element;
-  if (element?.removeAttribute) {
+  if (state && element?.removeAttribute) {
     if (state.hadStyle) element.setAttribute("style", state.savedStyle ?? "");
     else element.removeAttribute("style");
   }
