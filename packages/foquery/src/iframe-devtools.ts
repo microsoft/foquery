@@ -100,34 +100,38 @@ export function connectFoQueryChildFrameDevtools(
   let focusTreeStateTimeout: ReturnType<typeof setTimeout> | undefined;
   let disposed = false;
 
+  const postToParent = (message: FoQueryFrameMessage | DevtoolsFrameMessage): boolean => {
+    if (disposed) return false;
+
+    const parentWindow = win.parent;
+    if (!parentWindow) return false;
+
+    parentWindow.postMessage(message, parentOrigin);
+    return true;
+  };
+
   const postTreeState = () => {
-    win.parent.postMessage(
-      {
-        source: FOQUERY_FRAME_MESSAGE_SOURCE,
-        version: FOQUERY_FRAME_MESSAGE_VERSION,
-        type: "tree-state",
-        frameId,
-        snapshot: serializeFoQueryDevtoolsTree(rootNode.root.xmlElement),
-      },
-      parentOrigin,
-    );
+    postToParent({
+      source: FOQUERY_FRAME_MESSAGE_SOURCE,
+      version: FOQUERY_FRAME_MESSAGE_VERSION,
+      type: "tree-state",
+      frameId,
+      snapshot: serializeFoQueryDevtoolsTree(rootNode.root.xmlElement),
+    });
   };
 
   const requestFocus = (xpath: string, requestOptions?: Types.RequestFocusOptions) => {
     const request = new FoQueryFrameRequest(xpath);
     pendingRequests.set(request.requestId, request);
-    win.parent.postMessage(
-      {
-        source: FOQUERY_FRAME_MESSAGE_SOURCE,
-        version: FOQUERY_FRAME_MESSAGE_VERSION,
-        type: "request-focus",
-        frameId,
-        requestId: request.requestId,
-        xpath,
-        options: serializeRequestFocusOptions(requestOptions),
-      },
-      parentOrigin,
-    );
+    postToParent({
+      source: FOQUERY_FRAME_MESSAGE_SOURCE,
+      version: FOQUERY_FRAME_MESSAGE_VERSION,
+      type: "request-focus",
+      frameId,
+      requestId: request.requestId,
+      xpath,
+      options: serializeRequestFocusOptions(requestOptions),
+    });
     request.promise.finally(() => {
       pendingRequests.delete(request.requestId);
     });
@@ -154,17 +158,14 @@ export function connectFoQueryChildFrameDevtools(
         skipAppCoordination: true,
       });
       localRequest.promise.then((status) => {
-        win.parent.postMessage(
-          {
-            source: FOQUERY_FRAME_MESSAGE_SOURCE,
-            version: FOQUERY_FRAME_MESSAGE_VERSION,
-            type: "focus-result",
-            frameId,
-            requestId: message.requestId,
-            status,
-          },
-          parentOrigin,
-        );
+        postToParent({
+          source: FOQUERY_FRAME_MESSAGE_SOURCE,
+          version: FOQUERY_FRAME_MESSAGE_VERSION,
+          type: "focus-result",
+          frameId,
+          requestId: message.requestId,
+          status,
+        });
       });
     } else if (message.type === "child-ready") {
       postTreeState();
@@ -187,15 +188,12 @@ export function connectFoQueryChildFrameDevtools(
   rootNode.requestFocus = requestFocus;
   rootNode.root.requestFocus = requestFocus;
 
-  win.parent.postMessage(
-    {
-      source: FOQUERY_FRAME_MESSAGE_SOURCE,
-      version: FOQUERY_FRAME_MESSAGE_VERSION,
-      type: "child-ready",
-      frameId,
-    },
-    parentOrigin,
-  );
+  postToParent({
+    source: FOQUERY_FRAME_MESSAGE_SOURCE,
+    version: FOQUERY_FRAME_MESSAGE_VERSION,
+    type: "child-ready",
+    frameId,
+  });
   postTreeState();
   readyTreeStateTimeout = setTimeout(postTreeState, 0);
   let readyTreeStateRepeats = 0;
