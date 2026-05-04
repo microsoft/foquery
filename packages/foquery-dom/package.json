@@ -1,6 +1,6 @@
 {
   "name": "foquery-dom",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Vanilla DOM bindings for foquery",
   "license": "MIT",
   "main": "./dist/index.js",
@@ -22,6 +22,6 @@
   ],
   "sideEffects": false,
   "dependencies": {
-    "foquery": "^0.0.2"
+    "foquery": "^0.0.3"
   }
 }

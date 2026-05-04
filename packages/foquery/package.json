@@ -1,6 +1,6 @@
 {
   "name": "foquery",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "XPath-based focus query tree",
   "license": "MIT",
   "main": "./dist/index.js",
