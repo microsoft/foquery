@@ -11,6 +11,22 @@ body {
   padding: 20px;
 }
 
+body.frame-body {
+  min-height: 100vh;
+  padding: 0;
+  background: #fff;
+}
+
+body.frame-body #root,
+body.frame-body .frame-route {
+  min-height: 100vh;
+  display: flex;
+}
+
+body.frame-body .frame-route > * {
+  flex: 1;
+}
+
 h1 {
   margin-bottom: 16px;
   font-size: 20px;
@@ -81,6 +97,67 @@ h1 {
   background: #fafafa;
 }
 
+.iframe-demo iframe {
+  display: block;
+  width: 100%;
+  min-height: 140px;
+  margin-top: 8px;
+  border: 1px solid #c7d8f4;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.iframe-demo iframe.primary-iframe {
+  height: 520px;
+  min-height: 520px;
+}
+
+.iframe-card iframe {
+  display: block;
+  width: 100%;
+  min-height: 220px;
+  margin-top: 8px;
+  border: 1px solid #c7d8f4;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.iframe-card iframe.nested-iframe {
+  height: 360px;
+  min-height: 360px;
+}
+
+.iframe-card iframe.level-three-iframe {
+  height: 260px;
+  min-height: 260px;
+}
+
+.iframe-card {
+  width: 100%;
+  min-height: 100%;
+  padding: 10px;
+  border: 1px solid #c7d8f4;
+  border-radius: 6px;
+}
+
+.iframe-card h4 {
+  margin: 0 0 6px;
+  color: #4a90d9;
+  font-size: 13px;
+}
+
+.iframe-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin-top: 4px;
+}
+
+.iframe-actions button {
+  font-size: 11px;
+  padding: 4px 8px;
+}
+
 button {
   padding: 6px 12px;
   margin: 4px;
@@ -134,11 +211,18 @@ button:focus {
   background: #c0392b;
 }
 
+.progressive-actions {
+  display: flex;
+  gap: 4px;
+}
+
 .progressive-btn {
+  flex: 1;
   background: #8e44ad;
   color: #fff;
   border-color: #7d3c98;
-  width: 100%;
+  margin: 0;
+  padding: 6px 8px;
 }
 
 .progressive-btn:hover {

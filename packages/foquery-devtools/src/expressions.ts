@@ -40,7 +40,29 @@ export function serializeTreeExpression(globalName: string): string {
         });
       });
 
+      Array.prototype.forEach.call(node.xmlElement.children, function(childEl) {
+        if (childEl.foQueryRemoteFrameRef) {
+          children.push(serializeRemoteElement(childEl));
+        }
+      });
+
       result.children = children;
+      return result;
+    }
+
+    function serializeRemoteElement(el) {
+      var type = el.getAttribute("type") === "leaf" ? "leaf" : "parent";
+      var remoteRef = el.foQueryRemoteFrameRef;
+      var result = {
+        type: type,
+        name: el.tagName,
+        lastFocused: remoteRef && remoteRef.lastFocused,
+        remoteFrameId: remoteRef && remoteRef.frameId,
+        remoteXPath: remoteRef && remoteRef.childXPath
+      };
+      if (type === "parent") {
+        result.children = Array.prototype.map.call(el.children, serializeRemoteElement);
+      }
       return result;
     }
 
@@ -66,7 +88,9 @@ export function buildLeafIndexMapSnippet(globalName: string): string {
 export function serializeElSnippet(): string {
   return `
     function serializeEl(el) {
-      if (el.foQueryLeafNode) {
+      if (el.foQueryRemoteFrameRef) {
+        return { type: el.getAttribute("type") === "leaf" ? "leaf" : "parent", name: el.tagName, lastFocused: el.foQueryRemoteFrameRef.lastFocused, remoteFrameId: el.foQueryRemoteFrameRef.frameId, remoteXPath: el.foQueryRemoteFrameRef.childXPath };
+      } else if (el.foQueryLeafNode) {
         return { type: "leaf", name: el.foQueryLeafNode.names.join(", "), lastFocused: el.foQueryLeafNode.lastFocused, leafIndex: leafIndexMap.get(el) };
       } else if (el.foQueryParentNode) {
         return { type: "parent", name: el.foQueryParentNode.name, lastFocused: el.foQueryParentNode.lastFocused };
@@ -108,7 +132,7 @@ export function queryXPathExpression(
     function evalXPath(xpath, ctx) {
       var r = xmlDoc.evaluate(xpath, ctx, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
       var els = [];
-      for (var i = 0; i < r.snapshotLength; i++) { var n = r.snapshotItem(i); if (n instanceof Element) els.push(n); }
+      for (var i = 0; i < r.snapshotLength; i++) { var n = r.snapshotItem(i); if (n && n.nodeType === 1) els.push(n); }
       return els;
     }
 
@@ -121,7 +145,9 @@ export function queryXPathExpression(
       return {
         error: false,
         results: results.map(function(el) {
-          if (el.foQueryLeafNode) {
+          if (el.foQueryRemoteFrameRef) {
+            return { type: el.getAttribute("type") === "leaf" ? "leaf" : "parent", name: el.tagName, remoteFrameId: el.foQueryRemoteFrameRef.frameId, remoteXPath: el.foQueryRemoteFrameRef.childXPath };
+          } else if (el.foQueryLeafNode) {
             return { type: "leaf", name: el.foQueryLeafNode.names.join(", "), leafIndex: leafIndexMap.get(el) };
           } else if (el.foQueryParentNode) {
             return { type: "parent", name: el.foQueryParentNode.name };
@@ -156,7 +182,7 @@ export function focusExpression(
 
     var req = contextNode ? contextNode.xmlElement.foQueryParentInst.requestFocus(${JSON.stringify(xpath)}) : inst.requestFocus(${JSON.stringify(xpath)});
     var diag = req.diagnostics;
-    if (!diag) return { matched: [], candidates: [], winner: null, status: "waiting" };
+    if (!diag) return { matched: [], candidates: [], winner: null, status: "waiting", xpath: ${JSON.stringify(xpath)} };
 
     // When the page window is not OS-focused, el.focus() is a no-op and
     // focusin does not fire. Manually dispatch focusin so onFocusIn handler
@@ -176,6 +202,7 @@ export function focusExpression(
       candidates: finalDiag.candidates.map(serializeEl),
       winner: finalDiag.winner ? serializeEl(finalDiag.winner) : null,
       status: req.status === 2 ? "succeeded" : req.status === 3 ? "canceled" : req.status === 4 ? "timed out" : req.status === 5 ? "no candidates" : "waiting",
+      xpath: finalDiag.xpath,
       startedAt: finalDiag.startedAt,
       resolvedAt: finalDiag.resolvedAt,
       cancelReason: finalDiag.cancelReason,
@@ -200,6 +227,7 @@ function serializeDiagSnippet(): string {
         candidates: diag.candidates.map(serializeEl),
         winner: diag.winner ? serializeEl(diag.winner) : null,
         status: req.status === 2 ? "succeeded" : req.status === 3 ? "canceled" : req.status === 4 ? "timed out" : req.status === 5 ? "no candidates" : "waiting",
+        xpath: diag.xpath,
         startedAt: diag.startedAt,
         resolvedAt: diag.resolvedAt,
         cancelReason: diag.cancelReason,

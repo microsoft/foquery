@@ -2,13 +2,30 @@
  * Copyright (c) Microsoft Corporation. All rights reserved.
  * Licensed under the MIT License.
  */
-import { test, expect, type Page, type BrowserContext } from "@playwright/test";
+import { test, expect, type Page, type BrowserContext, type Frame } from "@playwright/test";
 
-const APP_URL = "http://localhost:5199";
-const PANEL_URL = "http://localhost:5198/panel.html";
+const APP_URL = "http://127.0.0.1:5173";
+const PANEL_URL = "http://127.0.0.1:5198/panel.html";
+const PRIMARY_FRAME_ID = "example-card-frame";
+const PRIMARY_DEFAULT_REMOTE_KEY = `remote:${PRIMARY_FRAME_ID}://Card/DefaultFocusable`;
+const PRIMARY_NESTED_REMOTE_KEY = `remote:${PRIMARY_FRAME_ID}://Card/NestedArea/NestedCardInIframe/NestedCard/DeepFocusable`;
+const PRIMARY_DEEPEST_REMOTE_KEY = `remote:${PRIMARY_FRAME_ID}://Card/NestedArea/NestedCardInIframe/NestedCard/LevelThreeFrame/LevelThreeCard/DeepestFocusable`;
+const LEVEL_THREE_FOCUS_QUERY =
+  "//content/messages/message/CardInIframe//NestedArea/NestedCardInIframe//NestedCard/LevelThreeFrame//LevelThreeCard/DeepestFocusable";
 
 async function setupPanel(context: BrowserContext): Promise<{ app: Page; panel: Page }> {
   const app = await context.newPage();
+  await app.addInitScript(() => {
+    const w = window as unknown as Record<string, unknown>;
+    w.__FOQUERY_DEVTOOLS_INSPECTED__ = null;
+    w.inspect = (el: Element) => {
+      w.__FOQUERY_DEVTOOLS_INSPECTED__ = {
+        tagName: el.tagName,
+        title: el.getAttribute("title"),
+        src: el.getAttribute("src"),
+      };
+    };
+  });
   await app.goto(APP_URL);
   await app.waitForFunction(() => (window as unknown as Record<string, unknown>).__FOQUERY_ROOT__);
 
@@ -52,6 +69,19 @@ async function setupPanel(context: BrowserContext): Promise<{ app: Page; panel: 
   return { app, panel };
 }
 
+async function waitForExampleFrame(app: Page, role: string): Promise<Frame> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < 10000) {
+    const frame = app
+      .frames()
+      .find((candidate) => candidate.url().includes(`foqueryFrame=${role}`));
+    if (frame) return frame;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+
+  throw new Error(`Timed out waiting for ${role} example frame`);
+}
+
 test.describe("devtools panel UI against live example app", () => {
   let app: Page;
   let panel: Page;
@@ -82,6 +112,129 @@ test.describe("devtools panel UI against live example app", () => {
       expect(leafNames.length).toBeGreaterThan(0);
       expect(leafNames).toContain("SelectedItem");
       expect(leafNames).toContain("DefaultItem");
+    });
+
+    test("renders nested cross-origin iframe tree snapshots", async () => {
+      const expectedNames = [
+        "CardInIframe",
+        "Card",
+        "DefaultFocusable",
+        "SecondaryFocusable",
+        "NestedArea",
+        "NestedCardInIframe",
+        "NestedCard",
+        "DeepFocusable",
+        "LevelThreeFrame",
+        "LevelThreeCard",
+        "DeepestFocusable",
+        "SecondaryCardInIframe",
+      ];
+
+      await panel.waitForFunction(
+        (names) => {
+          const renderedNames = new Set(
+            Array.from(document.querySelectorAll("#tree .tree-node-label")).map((el) =>
+              el.getAttribute("data-name"),
+            ),
+          );
+          return names.every((name) => renderedNames.has(name));
+        },
+        expectedNames,
+        { timeout: 10000 },
+      );
+
+      const remoteMatchKeys = await panel.$$eval("#tree .tree-node", (els) =>
+        els
+          .map((el) => el.getAttribute("data-match-key"))
+          .filter((key): key is string => key?.startsWith("remote:") ?? false),
+      );
+
+      expect(remoteMatchKeys).toContain(PRIMARY_DEFAULT_REMOTE_KEY);
+      expect(remoteMatchKeys).toContain(PRIMARY_DEEPEST_REMOTE_KEY);
+      expect(remoteMatchKeys).toContain(
+        "remote:example-secondary-card-frame://Card/SecondaryFocusable",
+      );
+    });
+
+    test("querying a remote iframe leaf highlights it in the tree", async () => {
+      await panel.fill(
+        "#xpath-input",
+        "//content/messages/message/CardInIframe//Card/DefaultFocusable",
+      );
+
+      await panel.waitForFunction(
+        (matchKey) => {
+          const results = document.getElementById("xpath-results")?.textContent;
+          return (
+            results === "1 result" &&
+            document
+              .querySelector(`.tree-node[data-match-key="${matchKey}"]`)
+              ?.classList.contains("xpath-match")
+          );
+        },
+        PRIMARY_DEFAULT_REMOTE_KEY,
+        { timeout: 10000 },
+      );
+
+      await expect(
+        panel.locator(`.tree-node[data-match-key="${PRIMARY_DEFAULT_REMOTE_KEY}"]`),
+      ).toHaveClass(/xpath-match/);
+    });
+  });
+
+  test.describe("cross-origin iframe devtools actions", () => {
+    test("remote leaf hover and inspect are routed into the owning iframe chain", async () => {
+      await panel.waitForSelector(`.tree-node[data-match-key="${PRIMARY_DEFAULT_REMOTE_KEY}"]`, {
+        timeout: 10000,
+      });
+
+      const primaryFrame = await waitForExampleFrame(app, "primary");
+      const nestedFrame = await waitForExampleFrame(app, "nested");
+      const levelThreeFrame = await waitForExampleFrame(app, "level-three");
+
+      const primaryLeafLabel = panel.locator(
+        `.tree-node[data-match-key="${PRIMARY_DEFAULT_REMOTE_KEY}"] > .tree-node-label`,
+      );
+      await primaryLeafLabel.hover();
+      await expect(primaryFrame.getByRole("button", { name: "Default target" })).toHaveAttribute(
+        "style",
+        /outline: 2px solid/,
+      );
+
+      const nestedLeafLabel = panel.locator(
+        `.tree-node[data-match-key="${PRIMARY_NESTED_REMOTE_KEY}"] > .tree-node-label`,
+      );
+      await nestedLeafLabel.hover();
+      await expect(nestedFrame.getByRole("button", { name: /Deep target/ })).toHaveAttribute(
+        "style",
+        /outline: 2px solid/,
+      );
+
+      const deepestLeafLabel = panel.locator(
+        `.tree-node[data-match-key="${PRIMARY_DEEPEST_REMOTE_KEY}"] > .tree-node-label`,
+      );
+      await deepestLeafLabel.hover();
+      await expect(levelThreeFrame.getByRole("button", { name: /Deepest target/ })).toHaveAttribute(
+        "style",
+        /outline: 2px solid/,
+      );
+
+      const highlightedTopIframe = await app.$eval(
+        'iframe[title="FoQuery iframe card"]',
+        (iframe) => iframe.getAttribute("style"),
+      );
+      expect(highlightedTopIframe ?? "").not.toContain("outline: 2px solid");
+
+      await primaryLeafLabel.click();
+      const inspected = await primaryFrame.waitForFunction(() => {
+        const value = (window as unknown as Record<string, unknown>)
+          .__FOQUERY_DEVTOOLS_INSPECTED__ as { tagName?: string; text?: string } | null;
+        return value?.tagName === "BUTTON" ? value : null;
+      });
+
+      expect(await inspected.jsonValue()).toMatchObject({
+        tagName: "BUTTON",
+      });
     });
   });
 
@@ -273,6 +426,17 @@ test.describe("devtools panel UI against live example app", () => {
 
       const statusText = await panel.textContent("#diagnostics .diag-section .diag-item");
       expect(statusText).toContain("succeeded");
+
+      const statusItems = await panel.$$eval(
+        "#diagnostics .diag-section:first-child .diag-item",
+        (els) => els.map((el) => el.textContent),
+      );
+      expect(statusItems).toContain("request: //header/SelectedItem");
+
+      await panel.fill("#xpath-input", "//footer/DefaultItem");
+      await panel.click("#diagnostics .diag-request");
+      await expect(panel.locator("#xpath-input")).toHaveValue("//header/SelectedItem");
+      await expect(panel.locator("#xpath-results")).toHaveText("1 result");
     });
 
     test("matched nodes are highlighted in the tree", async () => {
@@ -686,6 +850,67 @@ test.describe("devtools panel UI against live example app", () => {
 
       const activeText = await panel.textContent("#active-element");
       expect(activeText).toContain("<button>");
+    });
+
+    test("active element resolves focused cross-origin iframe leaf", async () => {
+      await panel.fill("#xpath-input", LEVEL_THREE_FOCUS_QUERY);
+      await panel.waitForFunction(
+        () => document.getElementById("focus-btn")?.hasAttribute("disabled") === false,
+        undefined,
+        { timeout: 10000 },
+      );
+      await panel.click("#focus-btn");
+
+      await panel.waitForFunction(
+        () => {
+          const text = document.getElementById("active-element")?.textContent ?? "";
+          return text.includes("<button>") && text.includes("Deepest");
+        },
+        undefined,
+        { timeout: 10000 },
+      );
+
+      const activeText = await panel.textContent("#active-element");
+      expect(activeText).toContain("<button>");
+      expect(activeText).toContain("Deepest");
+      expect(activeText).not.toContain("<iframe");
+    });
+
+    test("active element updates when focus moves from deepest iframe to parent iframe leaf", async () => {
+      await panel.fill("#xpath-input", LEVEL_THREE_FOCUS_QUERY);
+      await panel.waitForFunction(
+        () => document.getElementById("focus-btn")?.hasAttribute("disabled") === false,
+        undefined,
+        { timeout: 10000 },
+      );
+      await panel.click("#focus-btn");
+
+      await panel.waitForFunction(
+        () => {
+          const text = document.getElementById("active-element")?.textContent ?? "";
+          return text.includes("<button>") && text.includes("Deepest");
+        },
+        undefined,
+        { timeout: 10000 },
+      );
+
+      const nestedFrame = await waitForExampleFrame(app, "nested");
+      const levelThreeFrame = await waitForExampleFrame(app, "level-three");
+      await levelThreeFrame.getByRole("button", { name: /Deepest target/ }).click();
+      await expect(nestedFrame.getByRole("button", { name: /Deep target/ })).toBeFocused();
+
+      await panel.waitForFunction(
+        () => {
+          const text = document.getElementById("active-element")?.textContent ?? "";
+          return text.includes("<button>") && text.includes("Deep target");
+        },
+        undefined,
+        { timeout: 10000 },
+      );
+
+      const activeText = await panel.textContent("#active-element");
+      expect(activeText).toContain("Deep target");
+      expect(activeText).not.toContain("Deepest");
     });
   });
 

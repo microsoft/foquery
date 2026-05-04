@@ -61,3 +61,28 @@ Nodes are tagged with data attributes for identification:
 ## Auto-cleanup
 
 When a DOM element with `data-foquery-parent` is removed from the DOM (including nested removals), the `MutationObserver` on the root automatically calls `remove()` on the corresponding parent node.
+
+## Optional iframe API
+
+Iframe support is available from `foquery-dom/iframe` so the default DOM binding stays tree-shakeable.
+
+```ts
+import { FoQueryDOMRoot } from "foquery-dom";
+import { appendIFrameParent, connectFoQueryDOMChildFrame } from "foquery-dom/iframe";
+
+const domRoot = new FoQueryDOMRoot(container);
+const message = domRoot.appendParent(messageEl, "message");
+const cardFrame = appendIFrameParent(message, iframe, "CardInIframe", {
+  targetOrigin: "https://card.example",
+});
+
+domRoot.requestFocus("//message/CardInIframe//Card/DefaultFocusable");
+cardFrame.remove();
+```
+
+Inside an iframe:
+
+```ts
+const childRoot = new FoQueryDOMRoot(document.body, "FrameRoot");
+connectFoQueryDOMChildFrame(childRoot, { parentOrigin: "https://app.example" });
+```

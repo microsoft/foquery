@@ -15,14 +15,11 @@ export class FoQueryRootNode implements Types.FoQueryRootNode {
 
   public readonly root: Types.RootNode;
 
-  private _devtoolsGlobalName: string | undefined;
-
   constructor(
     win: Window & typeof globalThis,
     rootName: string = "Root",
     options?: {
       arbiter?: (candidates: Types.XmlElement[]) => Types.XmlElement;
-      devtools?: boolean | string;
     },
   ) {
     const arbiter = options?.arbiter;
@@ -55,20 +52,14 @@ export class FoQueryRootNode implements Types.FoQueryRootNode {
           callback(parentOrLeaf, removed);
         });
       },
-    };
 
-    if (options?.devtools) {
-      this._devtoolsGlobalName =
-        typeof options.devtools === "string" ? options.devtools : "__FOQUERY_ROOT__";
-      this.root.devtools = true;
-      (win as unknown as Record<string, unknown>)[this._devtoolsGlobalName] = this;
-    }
+      requestFocus: (xpath: string, requestOptions?: Types.RequestFocusOptions) =>
+        this.requestFocus(xpath, requestOptions),
+    };
   }
 
   public dispose(): void {
-    if (this._devtoolsGlobalName) {
-      delete (this.root.window as unknown as Record<string, unknown>)[this._devtoolsGlobalName];
-    }
+    // Reserved for subclasses that own disposable resources.
   }
 
   public appendParent(child: FoQueryParentNode): void {

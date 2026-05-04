@@ -4,7 +4,7 @@
  */
 import * as React from "react";
 import type { Types } from "foquery";
-import type { FoQueryParentNode, FoQueryLeafNode, FoQueryRequest } from "foquery";
+import type { FoQueryParentNode, FoQueryLeafNode } from "foquery";
 
 export interface FoQueryContextProps {
   root: Types.RootNode;
@@ -12,7 +12,7 @@ export interface FoQueryContextProps {
   appendParent: (child: FoQueryParentNode) => void;
   appendLeaf: (leaf: FoQueryLeafNode, element: HTMLElement) => void;
   query: (xpath: string) => Types.XmlElement[];
-  requestFocus: (xpath: string, options?: Types.RequestFocusOptions) => FoQueryRequest;
+  requestFocus: (xpath: string, options?: Types.RequestFocusOptions) => Types.Request;
   subscribe: (
     callback: (parentOrLeaf: Types.ParentNode | Types.LeafNode, removed?: boolean) => void,
   ) => () => void;

@@ -11,7 +11,7 @@ Compatible with React 17+ and React Concurrent Mode (StrictMode safe).
 Root provider. Creates the `FoQueryRootNode` and provides context to the tree.
 
 ```tsx
-<FoQueryProvider window={window} rootName="Root" devtools>
+<FoQueryProvider window={window} rootName="Root">
   {children}
 </FoQueryProvider>
 ```
@@ -20,7 +20,7 @@ Props:
 
 - `window` — **required**. The `Window` object to use for document access and event listeners. Enables iframe and testing scenarios.
 - `rootName` — XML root element name (default: `"Root"`)
-- `devtools` — expose root as `window.__FOQUERY_ROOT__` for devtools (default: `false`, or pass a custom global name string)
+- `devtools` — development-only. When the `"development"` conditional export is active, `true` exposes the root as `window.__FOQUERY_ROOT__` for the FoQuery DevTools panel, or pass a custom global name string. Production builds ignore this prop and do not include devtools runtime code.
 
 ### FoQueryParent
 
@@ -66,3 +66,47 @@ ctx.requestFocus("//main/SelectedItem", { timeout: 5000 });
 ## Concurrent Mode
 
 All components are function components using `useLayoutEffect` for tree mutations (commit phase only). No side effects during render. Safe with `<StrictMode>` and concurrent features.
+
+## Optional iframe API
+
+Iframe support is available from `foquery-react/iframe` so apps that do not import it do not include cross-frame messaging code.
+
+```tsx
+import { FoQueryProvider, FoQueryParent, useFoQuery } from "foquery-react";
+import { FoQueryIFrameParent, FoQueryFrameProvider } from "foquery-react/iframe";
+
+function ParentApp() {
+  const iframeRef = React.useRef<HTMLIFrameElement>(null);
+
+  return (
+    <FoQueryProvider window={window} rootName="Root">
+      <FoQueryParent name="message">
+        <FoQueryIFrameParent
+          name="CardInIframe"
+          iframeRef={iframeRef}
+          targetOrigin="https://card.example"
+        >
+          <iframe ref={iframeRef} src="https://card.example/card.html" />
+        </FoQueryIFrameParent>
+      </FoQueryParent>
+    </FoQueryProvider>
+  );
+}
+
+function FrameLeaf() {
+  const ref = useFoQuery<HTMLButtonElement>(["DefaultFocusable"]);
+  return <button ref={ref}>Default focus target</button>;
+}
+
+function ChildFrameApp() {
+  return (
+    <FoQueryFrameProvider window={window} rootName="FrameRoot" parentOrigin="https://app.example">
+      <FoQueryParent name="Card">
+        <FrameLeaf />
+      </FoQueryParent>
+    </FoQueryFrameProvider>
+  );
+}
+```
+
+The parent can focus into the iframe with `//message/CardInIframe//Card/DefaultFocusable`. Requests made inside the child frame are posted upward to the owning FoQuery app root and routed back down without exposing the parent tree to the child.

@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./iframe": {
+      "types": "./dist/iframe.d.ts",
+      "default": "./dist/iframe.js"
     }
   },
   "files": [

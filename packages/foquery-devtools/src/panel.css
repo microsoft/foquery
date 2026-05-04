@@ -204,6 +204,10 @@ body {
   font-weight: bold;
 }
 
+.diag-item.diag-request {
+  cursor: pointer;
+}
+
 .diag-item .diag-meta {
   color: #6a9955;
   margin-left: 6px;

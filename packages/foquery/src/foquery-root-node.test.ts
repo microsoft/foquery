@@ -65,26 +65,6 @@ describe("FoQueryRootNode", () => {
     expect(cb2).toHaveBeenCalledTimes(1);
   });
 
-  it("devtools option exposes root as global variable", () => {
-    const rootNode = new FoQueryRootNode(window, "Root", { devtools: "__TEST_ROOT__" });
-
-    expect((window as unknown as Record<string, unknown>)["__TEST_ROOT__"]).toBe(rootNode);
-
-    rootNode.dispose();
-
-    expect((window as unknown as Record<string, unknown>)["__TEST_ROOT__"]).toBeUndefined();
-  });
-
-  it("devtools option with true uses default global name", () => {
-    const rootNode = new FoQueryRootNode(window, "Root", { devtools: true });
-
-    expect((window as unknown as Record<string, unknown>).__FOQUERY_ROOT__).toBe(rootNode);
-
-    rootNode.dispose();
-
-    expect((window as unknown as Record<string, unknown>).__FOQUERY_ROOT__).toBeUndefined();
-  });
-
   it("rootNode.requestFocus is a function", () => {
     const rootNode = new FoQueryRootNode(window);
     expect(typeof rootNode.requestFocus).toBe("function");

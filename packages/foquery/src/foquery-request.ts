@@ -7,14 +7,67 @@ import { RequestStatus } from "./consts";
 import { generateXPathSimplifications } from "./xpath-utils";
 import { evaluateXPath } from "./xpath-eval";
 
-// Only one active request globally — a page can only have one focused element at a time,
-// so even with multiple FoQuery roots, only one request can be active. Any new
-// requestFocus cancels the previous one regardless of which root it belongs to.
-let _activeRequest: FoQueryRequest | undefined;
+const DELEGATED_FOCUS_HANDOFF_TIMEOUT = 250;
+
+interface FoQueryRequestInternalOptions {
+  skipAppCoordination?: boolean;
+}
+
+class AppFocusCoordinator {
+  private _activeRequest: FoQueryRequest | undefined;
+  private _queuedRequest: FoQueryRequest | undefined;
+
+  public enqueue(request: FoQueryRequest): void {
+    if (!this._activeRequest) {
+      this._start(request);
+      return;
+    }
+
+    if (this._activeRequest === request) return;
+
+    this._queuedRequest?.cancel("superseded");
+    this._queuedRequest = request;
+
+    if (this._activeRequest.isAwaitingDelegatedFocusResult()) {
+      this._activeRequest.cancelAfterDelegatedFocusSettles(DELEGATED_FOCUS_HANDOFF_TIMEOUT);
+      return;
+    }
+
+    this._activeRequest.cancel("superseded");
+  }
+
+  public complete(request: FoQueryRequest): void {
+    if (this._activeRequest !== request) return;
+
+    this._activeRequest = undefined;
+    const nextRequest = this._queuedRequest;
+    this._queuedRequest = undefined;
+    if (nextRequest) {
+      this._start(nextRequest);
+    }
+  }
+
+  private _start(request: FoQueryRequest): void {
+    this._activeRequest = request;
+    request.start();
+  }
+}
+
+const _appFocusCoordinators = new WeakMap<Window & typeof globalThis, AppFocusCoordinator>();
+
+function getAppFocusCoordinator(root: Types.RootNode): AppFocusCoordinator {
+  let coordinator = _appFocusCoordinators.get(root.window);
+  if (!coordinator) {
+    coordinator = new AppFocusCoordinator();
+    _appFocusCoordinators.set(root.window, coordinator);
+  }
+  return coordinator;
+}
 
 export class FoQueryRequest implements Types.Request {
   private _root: Types.RootNode;
   private _contextNode: Types.ParentNode;
+  private _coordinator: AppFocusCoordinator | undefined;
   private _resolve:
     | ((status: Types.RequestStatus, cancelReason?: Types.CancelReason) => void)
     | undefined;
@@ -22,6 +75,7 @@ export class FoQueryRequest implements Types.Request {
   private _simplifications: string[][];
   private _previousPartialDepth = -1;
   private _pendingProgressiveFlush = false;
+  private _pendingProgressiveFlushTimerId: ReturnType<typeof setTimeout> | undefined;
   private _pendingBestDepth = -1;
   private _pendingBestXpath = "";
   private _timeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -31,6 +85,13 @@ export class FoQueryRequest implements Types.Request {
   private _hasPendingStringFocus = false;
   private _pollTimerId: ReturnType<typeof setInterval> | undefined;
   private _focusOptions: FocusOptions | undefined;
+  private _requestFocusOptions: Types.RequestFocusOptions | undefined;
+  private _delegatedRequest: Types.Request | undefined;
+  private _delegatedRemoteKey: string | undefined;
+  private _remoteFocusDelegationInProgress = false;
+  private _delegatedFocusSupersedeRequested = false;
+  private _delegatedFocusHandoffTimeoutId: ReturnType<typeof setTimeout> | undefined;
+  private _started = false;
 
   public readonly xpath: string;
   public readonly promise: Promise<Types.RequestStatus>;
@@ -41,27 +102,14 @@ export class FoQueryRequest implements Types.Request {
     xpath: string,
     node: Types.RootNode | Types.ParentNode,
     options?: Types.RequestFocusOptions,
+    internalOptions?: FoQueryRequestInternalOptions,
   ) {
     this.xpath = xpath;
     this._contextNode = node;
     this._root = "subscribe" in node ? (node as Types.RootNode) : findRoot(node);
     this._focusOptions = options?.focusOptions;
+    this._requestFocusOptions = options;
     this._simplifications = generateXPathSimplifications(xpath);
-
-    // Cancel any previous active request globally
-    if (_activeRequest && _activeRequest !== this) {
-      _activeRequest.cancel("superseded");
-    }
-    _activeRequest = this; // eslint-disable-line @typescript-eslint/no-this-alias
-
-    // Expose active request for devtools polling
-    if (this._root.devtools) {
-      (this._root.window as unknown as Record<string, unknown>).__FOQUERY_ACTIVE_REQUEST__ = this;
-    }
-
-    this._unsubscribe = this._root.subscribe(() => {
-      this._matchPath();
-    });
 
     this.promise = new Promise((resolve) => {
       this._resolve = (status: Types.RequestStatus, cancelReason?: Types.CancelReason) => {
@@ -103,6 +151,22 @@ export class FoQueryRequest implements Types.Request {
       }, options.timeout);
     }
 
+    if (internalOptions?.skipAppCoordination) {
+      this.start();
+    } else {
+      this._coordinator = getAppFocusCoordinator(this._root);
+      this._coordinator.enqueue(this);
+    }
+  }
+
+  public start(): void {
+    if (this._started || !this._resolve) return;
+    this._started = true;
+
+    this._unsubscribe = this._root.subscribe(() => {
+      this._matchPath();
+    });
+
     // Cancel on user interaction (click or focus movement not caused by this request)
     const doc = this._root.window.document;
     let ownFocus = false;
@@ -111,7 +175,11 @@ export class FoQueryRequest implements Types.Request {
         ownFocus = false;
         return;
       }
-      if (e.target instanceof Element && e.target.closest("[data-foquery-ignore]")) {
+      const target = e.target as { closest?: (selector: string) => Element | null } | null;
+      if (target?.closest?.("[data-foquery-ignore]")) {
+        return;
+      }
+      if (e.type === "focusin" && this._isRemoteCandidateFrameElement(e.target)) {
         return;
       }
       this._resolve?.(RequestStatus.Canceled, e.type === "focusin" ? "focus-moved" : "user-click");
@@ -140,6 +208,11 @@ export class FoQueryRequest implements Types.Request {
     this._cancelOnInteraction?.();
     this._cancelOnInteraction = undefined;
     this._markOwnFocus = undefined;
+    this._remoteFocusDelegationInProgress = false;
+    this._delegatedFocusSupersedeRequested = false;
+    this._delegatedRequest?.cancel();
+    this._delegatedRequest = undefined;
+    this._delegatedRemoteKey = undefined;
     this._stopPolling();
 
     if (this._timeoutId !== undefined) {
@@ -147,9 +220,18 @@ export class FoQueryRequest implements Types.Request {
       this._timeoutId = undefined;
     }
 
-    if (_activeRequest === this) {
-      _activeRequest = undefined;
+    if (this._delegatedFocusHandoffTimeoutId !== undefined) {
+      clearTimeout(this._delegatedFocusHandoffTimeoutId);
+      this._delegatedFocusHandoffTimeoutId = undefined;
     }
+
+    if (this._pendingProgressiveFlushTimerId !== undefined) {
+      clearTimeout(this._pendingProgressiveFlushTimerId);
+      this._pendingProgressiveFlushTimerId = undefined;
+      this._pendingProgressiveFlush = false;
+    }
+
+    this._coordinator?.complete(this);
   }
 
   private _query(xpath: string, contextNode: Types.ParentNode): Types.XmlElement[] {
@@ -227,17 +309,18 @@ export class FoQueryRequest implements Types.Request {
       }
     }
 
-    // Defer recording to microtask so that synchronous unmount+remount cycles
-    // (e.g. React StrictMode) settle before we record. Only the final state
-    // within a synchronous batch gets recorded.
+    // Defer recording briefly so synchronous UI updates and cross-frame snapshot
+    // cascades settle before we record. Only the final settled state in a short
+    // batch gets recorded, avoiding noisy degrade/restore pairs.
     this._pendingBestDepth = bestDepth;
     this._pendingBestXpath = bestXpath;
 
     if (!this._pendingProgressiveFlush) {
       this._pendingProgressiveFlush = true;
-      Promise.resolve().then(() => {
+      this._pendingProgressiveFlushTimerId = setTimeout(() => {
+        this._pendingProgressiveFlushTimerId = undefined;
         this._flushProgressiveMatch();
-      });
+      }, 25);
     }
   }
 
@@ -302,6 +385,12 @@ export class FoQueryRequest implements Types.Request {
       if (xmlElement.foQueryLeafNode) {
         this._setEffectiveLastFocused(xmlElement, fallbackParent);
         candidates.push(xmlElement);
+      } else if (xmlElement.foQueryRemoteFrameRef) {
+        this._effectiveLastFocused.set(
+          xmlElement,
+          xmlElement.foQueryRemoteFrameRef.lastFocused ?? fallbackParent?.lastFocused ?? 0,
+        );
+        candidates.push(xmlElement);
       } else if (xmlElement.foQueryParentNode) {
         const parentNode = xmlElement.foQueryParentNode;
 
@@ -333,6 +422,20 @@ export class FoQueryRequest implements Types.Request {
   }
 
   private _focusCandidate(xmlElement: Types.XmlElement): void {
+    if (xmlElement.foQueryRemoteFrameRef) {
+      const iframeElement = xmlElement.foQueryRemoteFrameRef.iframeElement.deref();
+      if (!iframeElement) return;
+
+      if (this._passesAllRemoteChecks(xmlElement.foQueryRemoteFrameRef, iframeElement)) {
+        this._delegateRemoteFocus(xmlElement.foQueryRemoteFrameRef);
+        return;
+      }
+
+      this._recordPendingChecks();
+      this._startPolling();
+      return;
+    }
+
     if (!xmlElement.foQueryLeafNode) return;
 
     const leaf = xmlElement.foQueryLeafNode;
@@ -365,6 +468,18 @@ export class FoQueryRequest implements Types.Request {
     return true;
   }
 
+  private _passesAllRemoteChecks(
+    remoteRef: Types.RemoteFrameRef,
+    iframeElement: HTMLIFrameElement,
+  ): boolean {
+    for (let p: Types.ParentNode | undefined = remoteRef.iframeParentNode; p; p = p.parent) {
+      for (const cb of p.checkCallbacks) {
+        if (!cb(iframeElement)) return false;
+      }
+    }
+    return true;
+  }
+
   private _doFocusLeaf(leaf: Types.LeafNode, el: HTMLElement): void {
     if (leaf.focus) {
       const result = leaf.focus();
@@ -376,6 +491,81 @@ export class FoQueryRequest implements Types.Request {
     this._markOwnFocus?.();
     el.focus(this._focusOptions);
     this._resolve?.(RequestStatus.Succeeded);
+  }
+
+  private _delegateRemoteFocus(remoteRef: Types.RemoteFrameRef): void {
+    const delegateFocus = remoteRef.iframeParentNode.iframeDelegateFocus;
+    if (!delegateFocus) return;
+
+    const remoteKey = `${remoteRef.frameId}:${remoteRef.childXPath}`;
+    if (this._delegatedRequest?.status === RequestStatus.Waiting) {
+      if (this._delegatedRemoteKey === remoteKey) {
+        return;
+      }
+      this._delegatedRequest.cancel();
+    }
+
+    this._markOwnFocus?.();
+    this._remoteFocusDelegationInProgress = true;
+    if (this._previousPartialDepth < 0) {
+      this._previousPartialDepth = 0;
+    }
+    const request = delegateFocus(remoteRef.childXPath, this._requestFocusOptions);
+    this._delegatedRequest = request;
+    this._delegatedRemoteKey = remoteKey;
+
+    request.promise.then((status) => {
+      if (this._delegatedRequest !== request) {
+        return;
+      }
+      this._delegatedRequest = undefined;
+      this._delegatedRemoteKey = undefined;
+      this._remoteFocusDelegationInProgress = false;
+      if (this._delegatedFocusHandoffTimeoutId !== undefined) {
+        clearTimeout(this._delegatedFocusHandoffTimeoutId);
+        this._delegatedFocusHandoffTimeoutId = undefined;
+      }
+      if (this._resolve) {
+        if (status === RequestStatus.Succeeded) {
+          this._resolve(status);
+        } else if (this._delegatedFocusSupersedeRequested) {
+          this._resolve(RequestStatus.Canceled, "superseded");
+        } else {
+          this._matchPath();
+        }
+      }
+    });
+  }
+
+  public isAwaitingDelegatedFocusResult(): boolean {
+    return this._delegatedRequest?.status === RequestStatus.Waiting;
+  }
+
+  public cancelAfterDelegatedFocusSettles(timeoutMs: number): void {
+    if (!this.isAwaitingDelegatedFocusResult()) {
+      this.cancel("superseded");
+      return;
+    }
+
+    this._delegatedFocusSupersedeRequested = true;
+    if (this._delegatedFocusHandoffTimeoutId !== undefined) return;
+    this._delegatedFocusHandoffTimeoutId = setTimeout(() => {
+      this._delegatedFocusHandoffTimeoutId = undefined;
+      this._resolve?.(RequestStatus.Canceled, "superseded");
+    }, timeoutMs);
+  }
+
+  private _isRemoteCandidateFrameElement(target: EventTarget | null): boolean {
+    if (!this._remoteFocusDelegationInProgress || !this.diagnostics) return false;
+
+    for (const xmlElement of this.diagnostics.candidates) {
+      const iframeElement = xmlElement.foQueryRemoteFrameRef?.iframeElement.deref();
+      if (iframeElement && target === iframeElement) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   private _startPolling(): void {
@@ -391,6 +581,27 @@ export class FoQueryRequest implements Types.Request {
 
       // Poll all current candidates
       for (const xmlEl of this.diagnostics.candidates) {
+        const remoteRef = xmlEl.foQueryRemoteFrameRef;
+        if (remoteRef) {
+          const iframeElement = remoteRef.iframeElement.deref();
+          if (!iframeElement) continue;
+          if (this._passesAllRemoteChecks(remoteRef, iframeElement)) {
+            this._stopPolling();
+            this._recordChecksReady({
+              names: [xmlEl.tagName],
+              xmlElements: new Map(),
+              element: remoteRef.iframeElement,
+              parent: remoteRef.iframeParentNode,
+              focus: undefined,
+              checkCallbacks: new Set(),
+              lastFocused: remoteRef.lastFocused,
+            });
+            this._delegateRemoteFocus(remoteRef);
+            return;
+          }
+          continue;
+        }
+
         const leaf = xmlEl.foQueryLeafNode;
         if (!leaf) continue;
         const el = leaf.element.deref();
@@ -413,16 +624,20 @@ export class FoQueryRequest implements Types.Request {
     const now = Date.now();
     for (const xmlEl of this.diagnostics.candidates) {
       const leaf = xmlEl.foQueryLeafNode;
-      if (!leaf) continue;
-      const key = leaf.names.join(",");
+      const remoteRef = xmlEl.foQueryRemoteFrameRef;
+      if (!leaf && !remoteRef) continue;
+      const key = leaf ? leaf.names.join(",") : `${remoteRef!.frameId}:${remoteRef!.childXPath}`;
       if (this._pendingCheckKeys.has(key)) continue;
-      const el = leaf.element.deref();
+      const el = leaf?.element.deref() ?? remoteRef!.iframeElement.deref();
       if (!el) continue;
-      if (!this._passesAllChecks(leaf, el)) {
+      const checksPass = leaf
+        ? this._passesAllChecks(leaf, el)
+        : this._passesAllRemoteChecks(remoteRef!, el as HTMLIFrameElement);
+      if (!checksPass) {
         this._pendingCheckKeys.add(key);
         this.diagnostics.events.push({
           type: "matched-pending-checks",
-          leafNames: leaf.names,
+          leafNames: leaf?.names ?? [xmlEl.tagName],
           timestamp: now,
         });
       }

@@ -16,8 +16,12 @@
     "baseUrl": ".",
     "paths": {
       "foquery": ["packages/foquery/src/index.ts"],
+      "foquery/devtools": ["packages/foquery/src/devtools.ts"],
+      "foquery/iframe": ["packages/foquery/src/iframe.ts"],
       "foquery-react": ["packages/foquery-react/src/index.ts"],
-      "foquery-dom": ["packages/foquery-dom/src/index.ts"]
+      "foquery-react/iframe": ["packages/foquery-react/src/iframe.tsx"],
+      "foquery-dom": ["packages/foquery-dom/src/index.ts"],
+      "foquery-dom/iframe": ["packages/foquery-dom/src/iframe.ts"]
     }
   },
   "exclude": ["node_modules", "tmp"]
