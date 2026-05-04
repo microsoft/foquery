@@ -240,13 +240,7 @@ describe("FoQuery iframe support", () => {
       let nestedSnapshot = {
         type: "parent",
         name: "NestedFrameRoot",
-        children: [
-          {
-            type: "parent",
-            name: "NestedCard",
-            children: [{ type: "leaf", name: "DeepFocusable" }],
-          },
-        ],
+        children: [],
       };
 
       const nestedIframe = document.createElement("iframe");
