@@ -3,18 +3,18 @@
  * Licensed under the MIT License.
  */
 import * as React from "react";
-import { useRef, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { FoQueryRootNode } from "foquery";
+import { enableFoQueryDevtools } from "foquery/devtools";
 import { FoQueryContext, FoQueryContextProps } from "./foquery-context";
+import type { FoQueryProviderProps } from "./foquery-provider";
 
-export interface FoQueryProviderProps {
-  window: Window & typeof globalThis;
-  rootName?: string;
-  devtools?: boolean | string;
-  children: React.ReactNode;
-}
-
-export function FoQueryProvider({ window: win, rootName, children }: FoQueryProviderProps) {
+export function FoQueryProvider({
+  window: win,
+  rootName,
+  devtools,
+  children,
+}: FoQueryProviderProps) {
   const rootNodeRef = useRef<FoQueryRootNode | null>(null);
 
   if (!rootNodeRef.current) {
@@ -23,6 +23,11 @@ export function FoQueryProvider({ window: win, rootName, children }: FoQueryProv
 
   const rootNode = rootNodeRef.current;
   const root = rootNode.root;
+
+  useEffect(() => {
+    if (!devtools) return;
+    return enableFoQueryDevtools(rootNode, devtools);
+  }, [devtools, rootNode]);
 
   const contextProps = useMemo<FoQueryContextProps>(
     () => ({

@@ -761,6 +761,30 @@ describe("FoQueryRequest", () => {
     document.body.removeChild(el);
   });
 
+  it("progressive: coalesces transient partial regressions before recording degradation", async () => {
+    const rootNode = new FoQueryRootNode(window);
+    const request = new FoQueryRequest("//main[@x]/sidebar[@y]/SelectedItem", rootNode.root, {
+      timeout: 500,
+    });
+    const main = new FoQueryParentNode("main", rootNode.root);
+    rootNode.appendParent(main);
+    const sidebar = new FoQueryParentNode("sidebar", rootNode.root);
+    main.appendParent(sidebar);
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    sidebar.remove();
+    await new Promise((r) => setTimeout(r, 0));
+    main.appendParent(new FoQueryParentNode("sidebar", rootNode.root));
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(request.diagnostics!.events.some((event) => event.type === "degraded")).toBe(false);
+    expect(request.diagnostics!.events.some((event) => event.type === "lost-match")).toBe(false);
+
+    request.cancel();
+    await request.promise;
+  });
+
   // --- Single active request ---
 
   it("consecutive requestFocus cancels the pending previous request", async () => {
@@ -876,12 +900,12 @@ describe("FoQueryRequest", () => {
     // Build tree step by step
     const main = new FoQueryParentNode("main", rootNode.root);
     rootNode.appendParent(main);
-    await new Promise((r) => setTimeout(r, 20));
+    await new Promise((r) => setTimeout(r, 50));
 
     const el = document.createElement("button");
     document.body.appendChild(el);
     main.appendLeaf(new FoQueryLeafNode(["SelectedItem"], rootNode.root), el);
-    await new Promise((r) => setTimeout(r, 20));
+    await new Promise((r) => setTimeout(r, 50));
 
     // Remove leaf to trigger degradation
     main.node.leafs.forEach((leaf) => {
@@ -889,7 +913,7 @@ describe("FoQueryRequest", () => {
     });
     main.node.leafs.clear();
     rootNode.root.notify(main.node, true);
-    await new Promise((r) => setTimeout(r, 20));
+    await new Promise((r) => setTimeout(r, 50));
 
     request.cancel();
     await request.promise;

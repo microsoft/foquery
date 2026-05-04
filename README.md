@@ -12,6 +12,59 @@ A library for building and querying a parallel XML tree that mirrors a UI compon
 | [`foquery-devtools`](packages/foquery-devtools/) | Chrome DevTools extension for inspecting FoQuery trees                |
 | [`example`](packages/example/)                   | React example app demonstrating all features                          |
 
+## Iframe support
+
+Iframe integration is available from optional subpath imports so the default packages stay tree-shakeable when cross-frame focus is not used:
+
+```ts
+import { FoQueryIFrameParentNode, connectFoQueryChildFrame } from "foquery/iframe";
+```
+
+An iframe is represented as a normal parent node in the outer tree, while the iframe runs its own FoQuery root and publishes a serialized child tree upward with `postMessage`. Parent-to-child communication only sends delegated focus requests and request results; the parent tree is never sent to children.
+
+```ts
+const frameNode = new FoQueryIFrameParentNode("CardInIframe", root.root, iframe, {
+  targetOrigin: "https://child.example",
+});
+message.appendParent(frameNode);
+
+root.requestFocus("//content/messages/message/CardInIframe//Card/DefaultFocusable");
+```
+
+Sibling iframes and nested iframe levels are addressed as normal FoQuery path segments:
+
+```ts
+root.requestFocus("//message/SecondaryCardInIframe//Card/SecondaryFocusable");
+root.requestFocus("//message/CardInIframe//NestedCardInIframe//NestedCard/DeepFocusable");
+```
+
+Inside the iframe:
+
+```ts
+const childRoot = new FoQueryRootNode(window, "FrameRoot");
+connectFoQueryChildFrame(childRoot, { parentOrigin: "https://app.example" });
+```
+
+Child-originated `requestFocus()` calls are forwarded to the owning FoQuery app root. Public focus requests share one app-wide transaction within that root window and its iframe subtree; if a new request arrives while an iframe is reporting the final delegated focus result, FoQuery waits briefly for that result before starting the next transaction.
+
+Local child paths are scoped through the source iframe:
+
+```ts
+// Called inside CardInIframe.
+childRoot.requestFocus("//Card/DefaultFocusable");
+
+// Coordinated by the owning FoQuery app root as:
+root.requestFocus("//content/messages/message/CardInIframe//Card/DefaultFocusable");
+```
+
+Root-level paths outside the child snapshot can target the parent app or sibling frames:
+
+```ts
+// Also called inside CardInIframe.
+childRoot.requestFocus("//header/SelectedItem");
+childRoot.requestFocus("//content/messages/message/SecondaryCardInIframe//Card/DefaultFocusable");
+```
+
 ## How it works
 
 FoQuery maintains an XML document that mirrors your UI's logical focus structure. Parent nodes define regions, leaf nodes define focusable elements. The XML tree can be queried with XPath to find and focus elements programmatically.
@@ -57,7 +110,7 @@ function Leaf({ names, children }) {
 
 function App() {
   return (
-    <FoQueryProvider window={window} rootName="Root" devtools>
+    <FoQueryProvider window={window} rootName="Root">
       <FoQueryParent name="main" focus="./SelectedItem">
         <Leaf names={["SelectedItem"]}>Click me</Leaf>
         <Leaf names={["DefaultItem"]}>Other</Leaf>
@@ -84,7 +137,7 @@ domRoot.requestFocus("//main/SelectedItem");
 ```ts
 import { FoQueryRootNode, FoQueryParentNode, FoQueryLeafNode } from "foquery";
 
-const rootNode = new FoQueryRootNode(window, "Root", { devtools: true });
+const rootNode = new FoQueryRootNode(window, "Root");
 const main = new FoQueryParentNode("main", rootNode.root, { focus: "./SelectedItem" });
 rootNode.appendParent(main);
 

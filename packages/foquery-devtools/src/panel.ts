@@ -48,6 +48,8 @@ interface SerializedNode {
   lastFocused?: number;
   leafIndex?: number;
   parentIndex?: number;
+  remoteFrameId?: string;
+  remoteXPath?: string;
   hasFocus?: boolean;
   focusType?: string;
   hasArbiter?: boolean;
@@ -59,6 +61,8 @@ interface DiagEl {
   name: string;
   lastFocused?: number;
   leafIndex?: number;
+  remoteFrameId?: string;
+  remoteXPath?: string;
 }
 
 interface DiagEvent {
@@ -74,6 +78,7 @@ interface DiagnosticsResult {
   candidates: DiagEl[];
   winner: DiagEl | null;
   status: string;
+  xpath?: string;
   startedAt?: number;
   resolvedAt?: number;
   cancelReason?: string;
@@ -85,14 +90,48 @@ interface ActiveElementInfo {
   id?: string;
   className?: string;
   text?: string;
+  remoteFrameId?: string;
+  remoteXPath?: string;
 }
+
+let currentActiveElementInfo: ActiveElementInfo | null = null;
 
 // --- Page expressions (remaining, not in expressions.ts) ---
 
-function activeElementExpression(): string {
+function activeElementExpression(globalName: string): string {
   return `(function() {
     var el = document.activeElement;
     if (!el || el === document.body) return null;
+    var inst = window[${JSON.stringify(globalName)}];
+
+    function findRemoteActiveElement(iframe) {
+      if (!inst || !inst.root) return null;
+
+      var best = null;
+      var stack = [inst.root.xmlElement];
+      while (stack.length) {
+        var xmlEl = stack.shift();
+        var ref = xmlEl.foQueryRemoteFrameRef;
+        var metadata = xmlEl.__FOQUERY_IFRAME_DEVTOOLS_METADATA__;
+        var activeElement = metadata && metadata.activeElement;
+        if (ref && activeElement && ref.iframeElement && ref.iframeElement.deref() === iframe) {
+          if (!best || ref.childXPath.length > best.remoteXPath.length) {
+            best = Object.assign({}, activeElement, {
+              remoteFrameId: ref.frameId,
+              remoteXPath: ref.childXPath
+            });
+          }
+        }
+        Array.prototype.forEach.call(xmlEl.children || [], function(child) { stack.push(child); });
+      }
+      return best;
+    }
+
+    if (el instanceof HTMLIFrameElement) {
+      var remoteActive = findRemoteActiveElement(el);
+      if (remoteActive) return remoteActive;
+    }
+
     var tag = el.tagName.toLowerCase();
     var id = el.id || undefined;
     var cn = el.className || undefined;
@@ -158,6 +197,133 @@ function highlightElementExpression(globalName: string, leafIndex: number): stri
   })()`;
 }
 
+function remoteElementResolverSnippet(
+  globalName: string,
+  frameId: string,
+  remoteXPath: string,
+): string {
+  return `
+    var inst = window[${JSON.stringify(globalName)}];
+    if (!inst || !inst.root) return null;
+
+    function findRemoteElement(rootEl) {
+      var stack = [rootEl];
+      while (stack.length) {
+        var el = stack.shift();
+        if (el.foQueryRemoteFrameRef &&
+            el.foQueryRemoteFrameRef.frameId === ${JSON.stringify(frameId)} &&
+            el.foQueryRemoteFrameRef.childXPath === ${JSON.stringify(remoteXPath)}) {
+          return el;
+        }
+        Array.prototype.forEach.call(el.children || [], function(child) { stack.push(child); });
+      }
+      return null;
+    }
+
+    function resolveRemoteElement(remoteEl) {
+      if (!remoteEl || !remoteEl.foQueryRemoteFrameRef) return null;
+
+      var ref = remoteEl.foQueryRemoteFrameRef;
+      var iframe = ref.iframeElement && ref.iframeElement.deref();
+      if (!iframe) return null;
+
+      return iframe;
+    }
+
+    return resolveRemoteElement(findRemoteElement(inst.root.xmlElement));
+  `;
+}
+
+function remoteDevtoolsMessageExpression(
+  globalName: string,
+  frameId: string,
+  remoteXPath: string,
+  type: "devtools-highlight" | "devtools-clear-highlight" | "devtools-inspect",
+): string {
+  return `(function() {
+    var remoteEl = (function() {
+      var inst = window[${JSON.stringify(globalName)}];
+      if (!inst || !inst.root) return null;
+
+      var stack = [inst.root.xmlElement];
+      while (stack.length) {
+        var el = stack.shift();
+        if (el.foQueryRemoteFrameRef &&
+            el.foQueryRemoteFrameRef.frameId === ${JSON.stringify(frameId)} &&
+            el.foQueryRemoteFrameRef.childXPath === ${JSON.stringify(remoteXPath)}) {
+          return el;
+        }
+        Array.prototype.forEach.call(el.children || [], function(child) { stack.push(child); });
+      }
+      return null;
+    })();
+    if (!remoteEl || !remoteEl.foQueryRemoteFrameRef) return false;
+
+    var ref = remoteEl.foQueryRemoteFrameRef;
+    var iframe = ref.iframeElement && ref.iframeElement.deref();
+    if (!iframe || !iframe.contentWindow) return false;
+
+    iframe.contentWindow.postMessage({
+      source: "foquery",
+      version: 1,
+      type: ${JSON.stringify(type)},
+      frameId: ref.frameId,
+      xpath: ref.childXPath
+    }, ref.targetOrigin || "*");
+    return true;
+  })()`;
+}
+
+function highlightRemoteElementExpression(
+  globalName: string,
+  frameId: string,
+  remoteXPath: string,
+): string {
+  return `(function() {
+    var posted = ${remoteDevtoolsMessageExpression(
+      globalName,
+      frameId,
+      remoteXPath,
+      "devtools-highlight",
+    )};
+    if (posted) return;
+
+    var highlightKey = "${HIGHLIGHT_KEY}";
+    var el = (function() {
+      ${remoteElementResolverSnippet(globalName, frameId, remoteXPath)}
+    })();
+    if (!el) return;
+
+    var prev = window[highlightKey];
+    if (prev && prev.element && prev.element.removeAttribute) {
+      if (prev.hadStyle) prev.element.setAttribute("style", prev.savedStyle);
+      else prev.element.removeAttribute("style");
+    }
+
+    var hadStyle = el.hasAttribute("style");
+    var savedStyle = el.getAttribute("style") || "";
+    el.setAttribute("style", savedStyle + (savedStyle ? "; " : "") + "outline: 2px solid #38bdf8; outline-offset: 2px; box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.25);");
+    el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    window[highlightKey] = { element: el, hadStyle: hadStyle, savedStyle: savedStyle };
+  })()`;
+}
+
+function clearRemoteElementExpression(
+  globalName: string,
+  frameId: string,
+  remoteXPath: string,
+): string {
+  return `(function() {
+    ${remoteDevtoolsMessageExpression(
+      globalName,
+      frameId,
+      remoteXPath,
+      "devtools-clear-highlight",
+    )};
+    ${clearHighlightExpression()}
+  })()`;
+}
+
 function clearHighlightExpression(): string {
   return `(function() {
     var highlightKey = "${HIGHLIGHT_KEY}";
@@ -187,16 +353,34 @@ function inspectElementExpression(globalName: string, leafIndex: number): string
   })()`;
 }
 
+function inspectRemoteElementExpression(
+  globalName: string,
+  frameId: string,
+  remoteXPath: string,
+): string {
+  return `(function() {
+    var posted = ${remoteDevtoolsMessageExpression(
+      globalName,
+      frameId,
+      remoteXPath,
+      "devtools-inspect",
+    )};
+    if (posted) return;
+
+    var el = (function() {
+      ${remoteElementResolverSnippet(globalName, frameId, remoteXPath)}
+    })();
+    if (el) inspect(el);
+  })()`;
+}
+
 // --- Tree rendering ---
 
 function renderTree(node: SerializedNode, container: HTMLElement): void {
   const div = document.createElement("div");
   div.className = `tree-node tree-${node.type}`;
 
-  const matchKey =
-    node.type === "leaf" && node.leafIndex !== undefined
-      ? `leaf:${node.leafIndex}`
-      : `parent:${node.name}`;
+  const matchKey = getNodeMatchKey(node);
   div.setAttribute("data-match-key", matchKey);
   if (node.parentIndex !== undefined) {
     div.setAttribute("data-parent-index", String(node.parentIndex));
@@ -231,6 +415,23 @@ function renderTree(node: SerializedNode, container: HTMLElement): void {
     label.addEventListener("click", () => {
       void evalInPage(inspectElementExpression(globalNameInput.value, leafIndex));
     });
+  } else if (node.type === "leaf" && node.remoteFrameId && node.remoteXPath) {
+    const { remoteFrameId, remoteXPath } = node;
+    label.addEventListener("mouseenter", () => {
+      void evalInPage(
+        highlightRemoteElementExpression(globalNameInput.value, remoteFrameId, remoteXPath),
+      );
+    });
+    label.addEventListener("mouseleave", () => {
+      void evalInPage(
+        clearRemoteElementExpression(globalNameInput.value, remoteFrameId, remoteXPath),
+      );
+    });
+    label.addEventListener("click", () => {
+      void evalInPage(
+        inspectRemoteElementExpression(globalNameInput.value, remoteFrameId, remoteXPath),
+      );
+    });
   }
 
   if (node.type === "parent") {
@@ -249,6 +450,16 @@ function renderTree(node: SerializedNode, container: HTMLElement): void {
   }
 
   container.appendChild(div);
+}
+
+function getNodeMatchKey(
+  node: Pick<SerializedNode, "type" | "name" | "leafIndex" | "remoteFrameId" | "remoteXPath">,
+): string {
+  if (node.type === "leaf" && node.leafIndex !== undefined) return `leaf:${node.leafIndex}`;
+  if (node.remoteFrameId && node.remoteXPath) {
+    return `remote:${node.remoteFrameId}:${node.remoteXPath}`;
+  }
+  return `parent:${node.name}`;
 }
 
 function formatTime(timestamp: number): string {
@@ -394,6 +605,24 @@ function createDiagItem(el: DiagEl, extraClass?: string): HTMLElement {
     item.addEventListener("click", () => {
       void evalInPage(inspectElementExpression(globalNameInput.value, leafIndex));
     });
+  } else if (el.type === "leaf" && el.remoteFrameId && el.remoteXPath) {
+    const { remoteFrameId, remoteXPath } = el;
+    item.style.cursor = "pointer";
+    item.addEventListener("mouseenter", () => {
+      void evalInPage(
+        highlightRemoteElementExpression(globalNameInput.value, remoteFrameId, remoteXPath),
+      );
+    });
+    item.addEventListener("mouseleave", () => {
+      void evalInPage(
+        clearRemoteElementExpression(globalNameInput.value, remoteFrameId, remoteXPath),
+      );
+    });
+    item.addEventListener("click", () => {
+      void evalInPage(
+        inspectRemoteElementExpression(globalNameInput.value, remoteFrameId, remoteXPath),
+      );
+    });
   }
 
   return item;
@@ -415,6 +644,18 @@ function renderDiagnostics(diag: DiagnosticsResult): void {
   statusItem.textContent = statusLabel;
   statusItem.style.color = diag.status === "succeeded" ? "#4ec9b0" : "#f44747";
   statusSection.appendChild(statusItem);
+  if (diag.xpath) {
+    const requestItem = document.createElement("div");
+    requestItem.className = "diag-item diag-request";
+    requestItem.textContent = `request: ${diag.xpath}`;
+    requestItem.title = "Put request into XPath input";
+    requestItem.addEventListener("click", () => {
+      xpathInput.value = diag.xpath!;
+      void runQuery();
+      xpathInput.focus();
+    });
+    statusSection.appendChild(requestItem);
+  }
   diagnosticsEl.appendChild(statusSection);
 
   // Event timeline
@@ -482,7 +723,10 @@ function createDiagSection(title: string): HTMLElement {
 
 async function refreshActiveElement(): Promise<void> {
   try {
-    const info = (await evalInPage(activeElementExpression())) as ActiveElementInfo | null;
+    const info = (await evalInPage(
+      activeElementExpression(globalNameInput.value),
+    )) as ActiveElementInfo | null;
+    currentActiveElementInfo = info;
     if (info) {
       let html = `<${info.tag}`;
       if (info.id) html += ` id="${info.id}"`;
@@ -494,6 +738,7 @@ async function refreshActiveElement(): Promise<void> {
       activeElementEl.textContent = "<body>";
     }
   } catch {
+    currentActiveElementInfo = null;
     activeElementEl.textContent = "—";
   }
 }
@@ -568,7 +813,13 @@ async function runQuery(): Promise<void> {
       queryXPathExpression(globalName, xpath, selectedParentIndex),
     )) as {
       error: boolean;
-      results: { type: string; name: string; leafIndex?: number }[];
+      results: {
+        type: "parent" | "leaf";
+        name: string;
+        leafIndex?: number;
+        remoteFrameId?: string;
+        remoteXPath?: string;
+      }[];
     };
 
     if (response.error) {
@@ -583,13 +834,7 @@ async function runQuery(): Promise<void> {
       xpathStatusEl.className = "valid";
       xpathInput.className = "valid";
       xpathResults.textContent = `${count} result${count !== 1 ? "s" : ""}`;
-      lastQueryMatchKeys = new Set(
-        response.results.map((r) =>
-          r.type === "leaf" && r.leafIndex !== undefined
-            ? `leaf:${r.leafIndex}`
-            : `parent:${r.name}`,
-        ),
-      );
+      lastQueryMatchKeys = new Set(response.results.map((r) => getNodeMatchKey(r)));
       lastQueryValid = true;
       focusBtn.disabled = false;
     }
@@ -668,12 +913,42 @@ focusBtn.addEventListener("click", () => {
 });
 
 activeElementEl.addEventListener("mouseenter", () => {
+  if (currentActiveElementInfo?.remoteFrameId && currentActiveElementInfo.remoteXPath) {
+    void evalInPage(
+      highlightRemoteElementExpression(
+        globalNameInput.value,
+        currentActiveElementInfo.remoteFrameId,
+        currentActiveElementInfo.remoteXPath,
+      ),
+    );
+    return;
+  }
   void evalInPage(highlightActiveElementExpression());
 });
 activeElementEl.addEventListener("mouseleave", () => {
+  if (currentActiveElementInfo?.remoteFrameId && currentActiveElementInfo.remoteXPath) {
+    void evalInPage(
+      clearRemoteElementExpression(
+        globalNameInput.value,
+        currentActiveElementInfo.remoteFrameId,
+        currentActiveElementInfo.remoteXPath,
+      ),
+    );
+    return;
+  }
   void evalInPage(clearHighlightExpression());
 });
 activeElementEl.addEventListener("click", () => {
+  if (currentActiveElementInfo?.remoteFrameId && currentActiveElementInfo.remoteXPath) {
+    void evalInPage(
+      inspectRemoteElementExpression(
+        globalNameInput.value,
+        currentActiveElementInfo.remoteFrameId,
+        currentActiveElementInfo.remoteXPath,
+      ),
+    );
+    return;
+  }
   void evalInPage(inspectActiveElementExpression());
 });
 

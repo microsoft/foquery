@@ -24,23 +24,36 @@ export interface ParentNode {
   arbiter?: (candidates: XmlElement[]) => XmlElement;
   checkCallbacks: Set<CheckCallback>;
   lastFocused: number | undefined;
+  iframeDelegateFocus?: (xpath: string, options?: RequestFocusOptions) => Request;
 }
 
 export interface RootNode extends ParentNode {
   window: Window & typeof globalThis;
   xmlDoc: Document;
-  devtools?: boolean;
   subscribe: (
     callback: (parentOrLeaf: ParentNode | LeafNode, removed?: boolean) => void,
   ) => () => void;
   notify: (parentOrLeaf: ParentNode | LeafNode, removed?: boolean) => void;
+  requestFocus?: (xpath: string, options?: RequestFocusOptions) => Request;
   arbiter?: (candidates: XmlElement[]) => XmlElement;
 }
 
 export interface XmlElement extends Element {
   foQueryParentNode?: ParentNode;
   foQueryParentInst?: FoQueryParentNode;
+  foQueryIFrameParentNode?: ParentNode;
+  foQueryRemoteFrameRef?: RemoteFrameRef;
   foQueryLeafNode?: LeafNode;
+}
+
+export interface RemoteFrameRef {
+  iframeParentNode: ParentNode;
+  iframeElement: WeakRef<HTMLIFrameElement>;
+  frameId: string;
+  targetOrigin: string;
+  childXPath: string;
+  leaf: boolean;
+  lastFocused: number | undefined;
 }
 
 export interface RequestFocusOptions {

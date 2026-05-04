@@ -8,7 +8,17 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "development": "./dist/index.development.js",
       "default": "./dist/index.js"
+    },
+    "./devtools": {
+      "types": "./dist/devtools.d.ts",
+      "default": "./dist/devtools.js"
+    },
+    "./iframe": {
+      "types": "./dist/iframe.d.ts",
+      "development": "./dist/iframe.development.js",
+      "default": "./dist/iframe.js"
     }
   },
   "files": [

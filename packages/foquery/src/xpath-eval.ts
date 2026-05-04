@@ -22,7 +22,7 @@ export function evaluateXPath(
 
     for (let i = 0; i < result.snapshotLength; i++) {
       const node = result.snapshotItem(i);
-      if (node instanceof Element) {
+      if (node?.nodeType === 1) {
         elements.push(node as Types.XmlElement);
       }
     }

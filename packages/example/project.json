@@ -5,7 +5,7 @@
   "projectType": "application",
   "targets": {
     "dev": {
-      "command": "vite",
+      "command": "node scripts/dev-cross-origin.mjs",
       "options": {
         "cwd": "packages/example"
       }
