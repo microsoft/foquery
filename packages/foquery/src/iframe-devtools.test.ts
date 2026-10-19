@@ -271,4 +271,43 @@ describe("FoQuery iframe devtools bridge", () => {
       button.remove();
     }
   });
+
+  it("answers request-tree-state and coalesces synchronous tree changes", async () => {
+    const postMessageSpy = vi.spyOn(window.parent, "postMessage");
+    const rootNode = new FoQueryRootNode(window);
+    const connection = connectFoQueryChildFrameDevtools(rootNode, { frameId: "child-frame" });
+    const card = new FoQueryParentNode("Card", rootNode.root);
+    const treeStates = () =>
+      postMessageSpy.mock.calls
+        .map(([message]) => message as { type?: string; frameId?: string })
+        .filter((message) => message?.type === "tree-state");
+    postMessageSpy.mockClear();
+
+    try {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: {
+            source: FOQUERY_FRAME_MESSAGE_SOURCE,
+            version: FOQUERY_FRAME_MESSAGE_VERSION,
+            type: "request-tree-state",
+            frameId: "unknown",
+          },
+          origin: window.location.origin,
+          source: window.parent,
+        }),
+      );
+      expect(treeStates()).toEqual([expect.objectContaining({ frameId: "child-frame" })]);
+
+      postMessageSpy.mockClear();
+      rootNode.appendParent(card);
+      card.appendLeaf(new FoQueryLeafNode(["A"], rootNode.root), document.createElement("button"));
+      card.appendLeaf(new FoQueryLeafNode(["B"], rootNode.root), document.createElement("button"));
+      expect(treeStates()).toHaveLength(0);
+      await Promise.resolve();
+      expect(treeStates()).toHaveLength(1);
+    } finally {
+      connection.dispose();
+      card.remove();
+    }
+  });
 });

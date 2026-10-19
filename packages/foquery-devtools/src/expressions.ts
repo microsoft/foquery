@@ -8,8 +8,7 @@ export function serializeTreeExpression(globalName: string): string {
     var inst = window[${JSON.stringify(globalName)}];
     if (!inst) return null;
     var root = inst.root;
-    var leafIdx = 0;
-    var parentIdx = 0;
+    ${nodeIdSnippet()}
 
     function serializeParent(node) {
       var focusType = null;
@@ -19,7 +18,7 @@ export function serializeTreeExpression(globalName: string): string {
       var result = {
         type: "parent",
         name: node.name,
-        parentIndex: parentIdx++,
+        parentId: nodeId(node),
         lastFocused: node.lastFocused,
         hasFocus: node.focus !== undefined,
         focusType: focusType,
@@ -36,7 +35,7 @@ export function serializeTreeExpression(globalName: string): string {
           type: "leaf",
           name: leaf.names.join(", "),
           lastFocused: leaf.lastFocused,
-          leafIndex: leafIdx++
+          leafId: nodeId(leaf)
         });
       });
 
@@ -70,18 +69,25 @@ export function serializeTreeExpression(globalName: string): string {
   })()`;
 }
 
-export function buildLeafIndexMapSnippet(globalName: string): string {
+/**
+ * Defines `nodeId(obj)`, which returns an id that stays the same for a parent or leaf node
+ * object across evaluations (unlike tree positions, which shift when siblings mount).
+ */
+export function nodeIdSnippet(): string {
   return `
-    var leafIndexMap = new Map();
-    var idx = 0;
-    function indexLeafs(node) {
-      node.children.forEach(function(child) { indexLeafs(child); });
-      node.leafs.forEach(function(leaf) {
-        leaf.xmlElements.forEach(function(xmlEl) { leafIndexMap.set(xmlEl, idx); });
-        idx++;
-      });
+    var __nodeIds = window.__FOQUERY_DEVTOOLS_NODE_IDS__;
+    if (!__nodeIds) {
+      __nodeIds = { map: new WeakMap(), next: 1 };
+      Object.defineProperty(window, "__FOQUERY_DEVTOOLS_NODE_IDS__", { value: __nodeIds, configurable: true });
     }
-    indexLeafs(window[${JSON.stringify(globalName)}].root);
+    function nodeId(obj) {
+      var id = __nodeIds.map.get(obj);
+      if (id === undefined) {
+        id = __nodeIds.next++;
+        __nodeIds.map.set(obj, id);
+      }
+      return id;
+    }
   `;
 }
 
@@ -91,35 +97,47 @@ export function serializeElSnippet(): string {
       if (el.foQueryRemoteFrameRef) {
         return { type: el.getAttribute("type") === "leaf" ? "leaf" : "parent", name: el.tagName, lastFocused: el.foQueryRemoteFrameRef.lastFocused, remoteFrameId: el.foQueryRemoteFrameRef.frameId, remoteXPath: el.foQueryRemoteFrameRef.childXPath };
       } else if (el.foQueryLeafNode) {
-        return { type: "leaf", name: el.foQueryLeafNode.names.join(", "), lastFocused: el.foQueryLeafNode.lastFocused, leafIndex: leafIndexMap.get(el) };
+        return { type: "leaf", name: el.foQueryLeafNode.names.join(", "), lastFocused: el.foQueryLeafNode.lastFocused, leafId: nodeId(el.foQueryLeafNode) };
       } else if (el.foQueryParentNode) {
-        return { type: "parent", name: el.foQueryParentNode.name, lastFocused: el.foQueryParentNode.lastFocused };
+        return { type: "parent", name: el.foQueryParentNode.name, lastFocused: el.foQueryParentNode.lastFocused, parentId: nodeId(el.foQueryParentNode) };
       }
       return { type: "unknown", name: el.tagName };
     }
   `;
 }
 
-export function findParentByIndexSnippet(globalName: string, targetIndex: number): string {
+/** Requires nodeIdSnippet(); defines `contextNode`. */
+export function findParentByIdSnippet(globalName: string, parentId: number): string {
   return `
     var contextNode = null;
-    var __parentIdx = 0;
-    function findParentByIndex(node) {
-      if (__parentIdx++ === ${targetIndex}) { contextNode = node; return; }
-      node.children.forEach(function(child) { if (!contextNode) findParentByIndex(child); });
+    function findParentById(node) {
+      if (nodeId(node) === ${Number(parentId)}) { contextNode = node; return; }
+      node.children.forEach(function(child) { if (!contextNode) findParentById(child); });
     }
-    findParentByIndex(window[${JSON.stringify(globalName)}].root);
+    findParentById(window[${JSON.stringify(globalName)}].root);
+  `;
+}
+
+/** Requires nodeIdSnippet(); defines `targetLeaf`. */
+export function findLeafByIdSnippet(globalName: string, leafId: number): string {
+  return `
+    var targetLeaf = null;
+    function findLeafById(node) {
+      node.leafs.forEach(function(leaf) { if (nodeId(leaf) === ${Number(leafId)}) targetLeaf = leaf; });
+      node.children.forEach(function(child) { if (!targetLeaf) findLeafById(child); });
+    }
+    findLeafById(window[${JSON.stringify(globalName)}].root);
   `;
 }
 
 export function queryXPathExpression(
   globalName: string,
   xpath: string,
-  parentIndex: number | null,
+  parentId: number | null,
 ): string {
   const contextSetup =
-    parentIndex !== null
-      ? findParentByIndexSnippet(globalName, parentIndex) +
+    parentId !== null
+      ? findParentByIdSnippet(globalName, parentId) +
         "if (!contextNode) return { error: false, results: [] };"
       : "var contextNode = null;";
 
@@ -137,7 +155,7 @@ export function queryXPathExpression(
     }
 
     try {
-      ${buildLeafIndexMapSnippet(globalName)}
+      ${nodeIdSnippet()}
       ${contextSetup}
 
       var ctxEl = contextNode ? contextNode.xmlElement : xmlDoc;
@@ -148,9 +166,9 @@ export function queryXPathExpression(
           if (el.foQueryRemoteFrameRef) {
             return { type: el.getAttribute("type") === "leaf" ? "leaf" : "parent", name: el.tagName, remoteFrameId: el.foQueryRemoteFrameRef.frameId, remoteXPath: el.foQueryRemoteFrameRef.childXPath };
           } else if (el.foQueryLeafNode) {
-            return { type: "leaf", name: el.foQueryLeafNode.names.join(", "), leafIndex: leafIndexMap.get(el) };
+            return { type: "leaf", name: el.foQueryLeafNode.names.join(", "), leafId: nodeId(el.foQueryLeafNode) };
           } else if (el.foQueryParentNode) {
-            return { type: "parent", name: el.foQueryParentNode.name };
+            return { type: "parent", name: el.foQueryParentNode.name, parentId: nodeId(el.foQueryParentNode) };
           }
           return { type: "unknown", name: el.tagName };
         })
@@ -164,11 +182,11 @@ export function queryXPathExpression(
 export function focusExpression(
   globalName: string,
   xpath: string,
-  parentIndex: number | null,
+  parentId: number | null,
 ): string {
   const contextSetup =
-    parentIndex !== null
-      ? findParentByIndexSnippet(globalName, parentIndex) + "if (!contextNode) return null;"
+    parentId !== null
+      ? findParentByIdSnippet(globalName, parentId) + "if (!contextNode) return null;"
       : "var contextNode = null;";
 
   return `(function() {
@@ -176,7 +194,7 @@ export function focusExpression(
     if (!inst || !inst.requestFocus) return null;
     var root = inst.root;
 
-    ${buildLeafIndexMapSnippet(globalName)}
+    ${nodeIdSnippet()}
     ${serializeElSnippet()}
     ${contextSetup}
 
@@ -251,7 +269,7 @@ export function activeRequestExpression(globalName: string): string {
     var inst = window[${JSON.stringify(globalName)}];
     if (!inst) return null;
 
-    ${buildLeafIndexMapSnippet(globalName)}
+    ${nodeIdSnippet()}
     ${serializeElSnippet()}
     ${serializeDiagSnippet()}
 

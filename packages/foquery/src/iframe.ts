@@ -71,9 +71,19 @@ export type FoQueryFrameMessage =
       type: "cancel-focus";
       frameId: string;
       requestId: string;
+    }
+  | {
+      source: typeof FOQUERY_FRAME_MESSAGE_SOURCE;
+      version: typeof FOQUERY_FRAME_MESSAGE_VERSION;
+      type: "request-tree-state";
+      frameId: string;
     };
 
 export interface FoQueryIFrameParentOptions {
+  /**
+   * Must match the child's frameId. When omitted, the node adopts the frameId announced
+   * by the child document loaded in `iframe` (messages whose `source` is its contentWindow).
+   */
   frameId?: string;
   targetOrigin?: string;
   verifySource?: boolean;
@@ -114,9 +124,16 @@ export class FoQueryIFrameParentNode extends FoQueryParentNode {
   private readonly _pendingRequests = new Map<string, FoQueryFrameRequest>();
   private readonly _childRequests = new Map<string, Types.Request>();
   private readonly _onMessage: (event: MessageEvent) => void;
+  private readonly _explicitFrameId: boolean;
+  private _frameId: string;
+  private _connected = false;
+  private _disposed = false;
 
   public readonly iframe: HTMLIFrameElement;
-  public readonly frameId: string;
+
+  public get frameId(): string {
+    return this._frameId;
+  }
 
   constructor(
     name: string,
@@ -127,19 +144,18 @@ export class FoQueryIFrameParentNode extends FoQueryParentNode {
     super(name, root, options);
     this._frameRoot = root;
     this.iframe = iframe;
-    this.frameId = options?.frameId ?? createFrameId();
+    this._explicitFrameId = options?.frameId !== undefined;
+    this._frameId = options?.frameId ?? createFrameId();
     this._targetOrigin = options?.targetOrigin ?? "*";
     this._verifySource = options?.verifySource ?? true;
 
     this.xmlElement.setAttribute("foquery-iframe", "true");
     (this.xmlElement as Types.XmlElement).foQueryIFrameParentNode = this.node;
-    this.node.iframeDelegateFocus = (xpath, requestOptions) =>
-      this._delegateFocus(xpath, requestOptions);
 
     this._onMessage = (event) => {
       this._handleMessage(event);
     };
-    this._frameRoot.window.addEventListener("message", this._onMessage);
+    this._connect();
   }
 
   public override rename(name: string): void {
@@ -148,12 +164,41 @@ export class FoQueryIFrameParentNode extends FoQueryParentNode {
     (this.xmlElement as Types.XmlElement).foQueryIFrameParentNode = this.node;
   }
 
+  /** @internal */
+  public override _attach(parent: Types.ParentNode): void {
+    this._connect();
+    super._attach(parent);
+  }
+
+  /** Detaches the node; it reconnects to the iframe when appended again. */
   public override remove(): void {
-    this.dispose();
+    this._disconnect();
     super.remove();
   }
 
+  /** Permanently stops listening to the iframe. */
   public dispose(): void {
+    this._disposed = true;
+    this._disconnect();
+  }
+
+  private _connect(): void {
+    if (this._connected || this._disposed) return;
+    this._connected = true;
+
+    this._frameRoot.window.addEventListener("message", this._onMessage);
+    this.node.iframeDelegateFocus = (xpath, requestOptions) =>
+      this._delegateFocus(xpath, requestOptions);
+
+    // The child only (re)sends its tree on changes and right after connecting, which
+    // may have happened before this node existed.
+    this._requestTreeState();
+  }
+
+  private _disconnect(): void {
+    if (!this._connected) return;
+    this._connected = false;
+
     this._frameRoot.window.removeEventListener("message", this._onMessage);
     this._pendingRequests.forEach((request) => request.cancel());
     this._pendingRequests.clear();
@@ -166,11 +211,32 @@ export class FoQueryIFrameParentNode extends FoQueryParentNode {
     }
   }
 
+  private _requestTreeState(): void {
+    const childWindow = this.iframe.contentWindow;
+    if (!childWindow || !mayPostTo(childWindow, this._targetOrigin)) return;
+
+    this._postToChild({
+      source: FOQUERY_FRAME_MESSAGE_SOURCE,
+      version: FOQUERY_FRAME_MESSAGE_VERSION,
+      type: "request-tree-state",
+      frameId: this.frameId,
+    });
+  }
+
   private _handleMessage(event: MessageEvent): void {
     const message = parseFoQueryFrameMessage(event.data);
-    if (!message || message.frameId !== this.frameId) return;
+    if (!message) return;
     if (!this._acceptsOrigin(event.origin)) return;
-    if (this._verifySource && event.source !== this.iframe.contentWindow) return;
+    const fromIframe =
+      this.iframe.contentWindow !== null && event.source === this.iframe.contentWindow;
+    if (this._verifySource && !fromIframe) return;
+
+    if (message.frameId !== this.frameId) {
+      // Only the window loaded in this iframe may announce which frameId it uses.
+      const announcesFrame = message.type === "child-ready" || message.type === "tree-state";
+      if (this._explicitFrameId || !fromIframe || !announcesFrame) return;
+      this._adoptFrameId(message.frameId);
+    }
 
     if (
       message.type === "child-ready" ||
@@ -202,6 +268,15 @@ export class FoQueryIFrameParentNode extends FoQueryParentNode {
       this._childRequests.delete(message.requestId);
       request?.cancel();
     }
+  }
+
+  private _adoptFrameId(frameId: string): void {
+    // Requests delegated under the old id will never be answered.
+    this._pendingRequests.forEach((request) => request.complete(RequestStatus.Canceled));
+    this._pendingRequests.clear();
+    this._removeRemoteSnapshot();
+    this._frameId = frameId;
+    this._frameRoot.notify(this.node);
   }
 
   private _acceptsOrigin(origin: string): boolean {
@@ -359,6 +434,7 @@ export function connectFoQueryChildFrame(
   const delegatedRequests = new Map<string, Types.Request>();
   let readyTreeStateTimeout: ReturnType<typeof setTimeout> | undefined;
   let readyTreeStateInterval: ReturnType<typeof setInterval> | undefined;
+  let treeStateScheduled = false;
   let disposed = false;
 
   const postToParent = (message: FoQueryFrameMessage) => {
@@ -403,9 +479,16 @@ export function connectFoQueryChildFrame(
 
   const onMessage = (event: MessageEvent) => {
     const message = parseFoQueryFrameMessage(event.data);
-    if (!message || message.frameId !== frameId) return;
+    if (!message) return;
     if (parentOrigin !== "*" && event.origin !== parentOrigin) return;
     if (verifySource && event.source !== win.parent) return;
+
+    // Answered regardless of frameId: it lets a parent without an explicit frameId adopt ours.
+    if (message.type === "request-tree-state") {
+      postTreeState();
+      return;
+    }
+    if (message.frameId !== frameId) return;
 
     if (message.type === "delegate-focus") {
       const localRequest = new FoQueryRequest(message.xpath, rootNode.root, message.options, {
@@ -434,8 +517,18 @@ export function connectFoQueryChildFrame(
     }
   };
 
+  // Coalesce bursts of tree changes (e.g. a whole React commit) into one snapshot.
+  const scheduleTreeState = () => {
+    if (treeStateScheduled) return;
+    treeStateScheduled = true;
+    queueMicrotask(() => {
+      treeStateScheduled = false;
+      if (!disposed) postTreeState();
+    });
+  };
+
   win.addEventListener("message", onMessage);
-  const unsubscribe = rootNode.root.subscribe(postTreeState);
+  const unsubscribe = rootNode.root.subscribe(scheduleTreeState);
 
   rootNode.requestFocus = requestFocus;
   rootNode.root.requestFocus = requestFocus;
@@ -506,6 +599,17 @@ export function serializeFoQueryTree(xmlElement: Types.XmlElement): SerializedFo
       serializeFoQueryTree(child as Types.XmlElement),
     ),
   };
+}
+
+function mayPostTo(win: Window, targetOrigin: string): boolean {
+  if (targetOrigin === "*") return true;
+  try {
+    // Same-origin access means the iframe still shows its initial about:blank document,
+    // and posting with a mismatched targetOrigin would only log an error.
+    return win.location.origin === targetOrigin;
+  } catch {
+    return true;
+  }
 }
 
 function parseFoQueryFrameMessage(data: unknown): FoQueryFrameMessage | undefined {

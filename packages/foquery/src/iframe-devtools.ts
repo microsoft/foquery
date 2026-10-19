@@ -98,6 +98,7 @@ export function connectFoQueryChildFrameDevtools(
   let readyTreeStateTimeout: ReturnType<typeof setTimeout> | undefined;
   let readyTreeStateInterval: ReturnType<typeof setInterval> | undefined;
   let focusTreeStateTimeout: ReturnType<typeof setTimeout> | undefined;
+  let treeStateScheduled = false;
   let disposed = false;
 
   const postToParent = (message: FoQueryFrameMessage | DevtoolsFrameMessage): boolean => {
@@ -158,9 +159,16 @@ export function connectFoQueryChildFrameDevtools(
 
   const onMessage = (event: MessageEvent) => {
     const message = parseFrameMessage(event.data);
-    if (!message || message.frameId !== frameId) return;
+    if (!message) return;
     if (parentOrigin !== "*" && event.origin !== parentOrigin) return;
     if (verifySource && event.source !== win.parent) return;
+
+    // Answered regardless of frameId: it lets a parent without an explicit frameId adopt ours.
+    if (message.type === "request-tree-state") {
+      postTreeState();
+      return;
+    }
+    if (message.frameId !== frameId) return;
 
     if (message.type === "delegate-focus") {
       const localRequest = new FoQueryRequest(message.xpath, rootNode.root, message.options, {
@@ -194,9 +202,19 @@ export function connectFoQueryChildFrameDevtools(
     }
   };
 
+  // Coalesce bursts of tree changes (e.g. a whole React commit) into one snapshot.
+  const scheduleTreeState = () => {
+    if (treeStateScheduled) return;
+    treeStateScheduled = true;
+    queueMicrotask(() => {
+      treeStateScheduled = false;
+      postTreeState();
+    });
+  };
+
   win.addEventListener("message", onMessage);
   win.document.addEventListener("focusin", scheduleFocusTreeState, true);
-  const unsubscribe = rootNode.root.subscribe(postTreeState);
+  const unsubscribe = rootNode.root.subscribe(scheduleTreeState);
 
   rootNode.requestFocus = requestFocus;
   rootNode.root.requestFocus = requestFocus;

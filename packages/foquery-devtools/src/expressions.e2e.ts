@@ -5,9 +5,10 @@
 import { test, expect } from "@playwright/test";
 import {
   activeRequestExpression,
-  buildLeafIndexMapSnippet,
-  findParentByIndexSnippet,
+  findLeafByIdSnippet,
+  findParentByIdSnippet,
   focusExpression,
+  nodeIdSnippet,
   queryXPathExpression,
   serializeTreeExpression,
 } from "./expressions";
@@ -23,8 +24,8 @@ test.describe("devtools expressions", () => {
       focusExpression(MALICIOUS_GLOBAL_NAME, "//a", null),
       focusExpression(MALICIOUS_GLOBAL_NAME, "//a", 0),
       activeRequestExpression(MALICIOUS_GLOBAL_NAME),
-      `(function() { ${buildLeafIndexMapSnippet(MALICIOUS_GLOBAL_NAME)} })()`,
-      `(function() { ${findParentByIndexSnippet(MALICIOUS_GLOBAL_NAME, 0)} })()`,
+      `(function() { ${nodeIdSnippet()}${findParentByIdSnippet(MALICIOUS_GLOBAL_NAME, 1)} })()`,
+      `(function() { ${nodeIdSnippet()}${findLeafByIdSnippet(MALICIOUS_GLOBAL_NAME, 1)} })()`,
     ];
     const globals = globalThis as Record<string, unknown>;
 
@@ -41,5 +42,37 @@ test.describe("devtools expressions", () => {
     } finally {
       delete globals.__foqueryInjected;
     }
+  });
+
+  test("keeps tree node ids stable when earlier siblings are added", () => {
+    const leaf = (names: string[]) => ({ names, lastFocused: undefined, xmlElements: new Map() });
+    const parent = (name: string, children: unknown[] = [], leafs: unknown[] = []) => ({
+      name,
+      children,
+      leafs,
+      xmlElement: { children: [] },
+    });
+    const target = parent("Target", [], [leaf(["Item"])]);
+    const root = parent("Root", [target]);
+    const win: Record<string, unknown> = { foquery: { root } };
+    const serialize = () =>
+      new Function("window", `return ${serializeTreeExpression("foquery")}`)(win) as {
+        children: { name: string; parentId: number; children: { leafId: number }[] }[];
+      };
+    const findTarget = (tree: ReturnType<typeof serialize>) =>
+      tree.children.find((child) => child.name === "Target")!;
+
+    const before = findTarget(serialize());
+    root.children.unshift(parent("Inserted", [], [leaf(["Other"])]));
+    const after = findTarget(serialize());
+
+    expect(after.parentId).toBe(before.parentId);
+    expect(after.children[0].leafId).toBe(before.children[0].leafId);
+
+    const query = new Function(
+      "window",
+      `return (function() { ${nodeIdSnippet()}${findParentByIdSnippet("foquery", after.parentId)} return contextNode; })()`,
+    )(win);
+    expect(query).toBe(target);
   });
 });

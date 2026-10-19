@@ -55,6 +55,37 @@ describe("foquery-dom iframe support", () => {
     container.remove();
   });
 
+  it("reflects a frameId adopted from the child document in the iframe attribute", () => {
+    const container = document.createElement("div");
+    const iframe = document.createElement("iframe");
+    document.body.appendChild(container);
+    container.appendChild(iframe);
+    const domRoot = new FoQueryDOMRoot(container);
+    const frame = appendIFrameParent(domRoot, iframe, "CardInIframe");
+
+    try {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          source: iframe.contentWindow,
+          origin: window.location.origin,
+          data: {
+            source: FOQUERY_FRAME_MESSAGE_SOURCE,
+            version: FOQUERY_FRAME_MESSAGE_VERSION,
+            type: "child-ready",
+            frameId: "child-document",
+          },
+        }),
+      );
+
+      expect(frame.frameId).toBe("child-document");
+      expect(iframe.getAttribute("data-foquery-iframe-parent")).toBe("child-document");
+    } finally {
+      frame.remove();
+      domRoot.dispose();
+      container.remove();
+    }
+  });
+
   it("auto-removes an iframe parent when its iframe element is removed from the root", async () => {
     const container = document.createElement("div");
     const iframe = document.createElement("iframe");

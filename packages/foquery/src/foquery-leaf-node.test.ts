@@ -103,6 +103,19 @@ describe("FoQueryLeafNode", () => {
     expect(rootNode.root.leafs.has(leaf.leaf)).toBe(true);
   });
 
+  it("keeps its custom focus function across remove() and re-attach", () => {
+    const rootNode = new FoQueryRootNode(window);
+    const focus = vi.fn(() => true);
+    const leaf = new FoQueryLeafNode(["A"], rootNode.root, focus);
+    const el = document.createElement("button");
+
+    rootNode.appendLeaf(leaf, el);
+    leaf.remove();
+    rootNode.appendLeaf(leaf, el);
+
+    expect(leaf.leaf.focus).toBe(focus);
+  });
+
   it("ignores repeated attach and remove calls", () => {
     const rootNode = new FoQueryRootNode(window);
     const leaf = new FoQueryLeafNode(["A"], rootNode.root);

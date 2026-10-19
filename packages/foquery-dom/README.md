@@ -77,6 +77,7 @@ const cardFrame = appendIFrameParent(message, iframe, "CardInIframe", {
 });
 
 domRoot.requestFocus("//message/CardInIframe//Card/DefaultFocusable");
+cardFrame.frameId; // adopted from the child document unless passed explicitly
 cardFrame.remove();
 ```
 
