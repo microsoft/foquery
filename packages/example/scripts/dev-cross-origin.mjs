@@ -87,7 +87,7 @@ async function assertPortsAvailable() {
   for (const server of unavailablePorts) {
     console.error(`Port ${server.port} is already in use (${server.name}).`);
   }
-  console.error("Stop the process using the port and run npm run dev again.");
+  console.error("Stop the process using the port and run pnpm dev again.");
   process.exit(1);
 }
 

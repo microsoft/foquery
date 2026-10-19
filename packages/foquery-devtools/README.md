@@ -19,7 +19,7 @@ Chrome DevTools extension for inspecting FoQuery trees.
 1. Build the extension:
 
    ```sh
-   npx nx run foquery-devtools:build
+   pnpm exec nx run foquery-devtools:build
    ```
 
 2. Load in Chrome/Edge:

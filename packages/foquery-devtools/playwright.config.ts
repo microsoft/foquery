@@ -14,7 +14,7 @@ export default defineConfig({
       stdout: "pipe",
     },
     {
-      command: "npx vite --host 127.0.0.1 --port 5198 --strictPort",
+      command: "pnpm exec vite --host 127.0.0.1 --port 5198 --strictPort",
       url: "http://127.0.0.1:5198/panel.html",
       stdout: "pipe",
     },

@@ -149,13 +149,17 @@ rootNode.requestFocus("//main/SelectedItem");
 
 ## Development
 
+Use Node.js 24 or newer and the pnpm version pinned in `package.json`.
+TypeScript stays on 6.0 until typescript-eslint supports TypeScript 7.
+
 ```sh
-npm install
-npm run dev          # start example app
-npm run all          # format → lint → typecheck → build → test
-npm run test         # run all tests
-npm run release      # interactive release (bump version, publish to npm)
-npm run graph        # Nx dependency graph
+corepack enable
+pnpm install
+pnpm dev          # start example app
+pnpm all          # format → lint → typecheck → build → test
+pnpm test         # run all tests
+pnpm release      # interactive release (bump version, publish to npm)
+pnpm graph        # Nx dependency graph
 ```
 
 ## Contributing

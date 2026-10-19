@@ -1,10 +1,12 @@
 import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
+const require = createRequire(import.meta.url);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const packageDir = path.resolve(__dirname, "..");
 const srcDir = path.join(packageDir, "src");
@@ -12,7 +14,13 @@ const distDir = path.join(packageDir, "dist");
 const zipPath = path.join(packageDir, "foquery-devtools.zip");
 
 await rm(distDir, { recursive: true, force: true });
-await execFileAsync("npx", ["tsc", "-p", "tsconfig.json"], { cwd: packageDir });
+await execFileAsync(
+  process.execPath,
+  [require.resolve("typescript/bin/tsc"), "-p", "tsconfig.json"],
+  {
+    cwd: packageDir,
+  },
+);
 await copyStaticAssets(srcDir, distDir);
 await createZip(distDir, zipPath);
 

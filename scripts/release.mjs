@@ -62,7 +62,7 @@ function updatePackageVersions(newVersion) {
 
     // Update foquery dependency in foquery-react and foquery-dom
     if (pkg.dependencies?.foquery) {
-      pkg.dependencies.foquery = `^${newVersion}`;
+      pkg.dependencies.foquery = "workspace:^";
     }
 
     writeJson(pkgPath, pkg);
@@ -112,16 +112,12 @@ async function main() {
 
   // Run full pipeline
   console.log("\nRunning full pipeline...");
-  run("npm run all");
-
-  // Copy LICENSE
-  run(
-    "cp LICENSE packages/foquery/ && cp LICENSE packages/foquery-react/ && cp LICENSE packages/foquery-dom/",
-  );
+  run("pnpm install --lockfile-only");
+  run("pnpm prepublish:packages");
 
   // Commit and tag
   run(
-    `git add packages/foquery/package.json packages/foquery-react/package.json packages/foquery-dom/package.json packages/foquery-devtools/src/manifest.json`,
+    `git add packages/foquery/package.json packages/foquery-react/package.json packages/foquery-dom/package.json packages/foquery-devtools/src/manifest.json pnpm-lock.yaml`,
   );
   run(`git commit -m "v${newVersion}"`);
   run(`git tag v${newVersion}`);
@@ -139,9 +135,9 @@ async function main() {
   }
 
   // Publish
-  run("npm -w foquery publish");
-  run("npm -w foquery-react publish");
-  run("npm -w foquery-dom publish");
+  run("pnpm --filter foquery publish");
+  run("pnpm --filter foquery-react publish");
+  run("pnpm --filter foquery-dom publish");
 
   // Push
   const confirmPush = await prompt("\nPush commit and tag to origin? (y/N) ");
