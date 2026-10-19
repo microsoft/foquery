@@ -69,8 +69,7 @@ export class FoQueryRequest implements Types.Request {
   private _contextNode: Types.ParentNode;
   private _coordinator: AppFocusCoordinator | undefined;
   private _resolve:
-    | ((status: Types.RequestStatus, cancelReason?: Types.CancelReason) => void)
-    | undefined;
+    ((status: Types.RequestStatus, cancelReason?: Types.CancelReason) => void) | undefined;
   private _effectiveLastFocused = new Map<Types.XmlElement, number>();
   private _simplifications: string[][];
   private _previousPartialDepth = -1;

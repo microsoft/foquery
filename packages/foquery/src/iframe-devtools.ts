@@ -19,9 +19,7 @@ import { RequestStatus } from "./consts";
 export const FOQUERY_IFRAME_DEVTOOLS_METADATA_KEY = "__FOQUERY_IFRAME_DEVTOOLS_METADATA__";
 
 type DevtoolsFrameMessageType =
-  | "devtools-highlight"
-  | "devtools-clear-highlight"
-  | "devtools-inspect";
+  "devtools-highlight" | "devtools-clear-highlight" | "devtools-inspect";
 
 interface DevtoolsFrameMessage {
   source: typeof FOQUERY_FRAME_MESSAGE_SOURCE;
@@ -414,8 +412,7 @@ function getLocalDevtoolsTarget(xmlElement: Types.XmlElement): HTMLElement | und
 
 function clearDevtoolsHighlight(win: Window & typeof globalThis): void {
   const state = (win as unknown as Record<string, unknown>).__FOQUERY_DEVTOOLS_HIGHLIGHT__ as
-    | { element?: Element; hadStyle?: boolean; savedStyle?: string }
-    | undefined;
+    { element?: Element; hadStyle?: boolean; savedStyle?: string } | undefined;
   const element = state?.element;
   if (state && element?.removeAttribute) {
     if (state.hadStyle) element.setAttribute("style", state.savedStyle ?? "");

@@ -24,7 +24,7 @@
   ],
   "sideEffects": false,
   "dependencies": {
-    "foquery": "^0.0.4"
+    "foquery": "workspace:^"
   },
   "peerDependencies": {
     "react": ">=17"

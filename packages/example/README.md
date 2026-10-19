@@ -5,7 +5,7 @@ React example app demonstrating FoQuery features. Uses `foquery-react` with Reac
 ## Run
 
 ```sh
-npm run dev
+pnpm dev
 ```
 
 Opens at `http://127.0.0.1:5173`.

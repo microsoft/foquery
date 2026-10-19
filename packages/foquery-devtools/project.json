@@ -11,7 +11,7 @@
       }
     },
     "test": {
-      "command": "npx playwright test --config playwright.config.ts",
+      "command": "pnpm exec playwright test --config playwright.config.ts",
       "options": {
         "cwd": "packages/foquery-devtools"
       }
