@@ -91,10 +91,12 @@ export function connectFoQueryChildFrameDevtools(
 
   const frameId = options?.frameId ?? createRequestId("foquery-frame");
   const parentOrigin = options?.parentOrigin ?? "*";
+  const verifySource = options?.verifySource ?? true;
   const win = rootNode.root.window;
   const originalRequestFocus = rootNode.requestFocus.bind(rootNode);
   const originalRootRequestFocus = rootNode.root.requestFocus;
   const pendingRequests = new Map<string, FoQueryFrameRequest>();
+  const delegatedRequests = new Map<string, Types.Request>();
   let readyTreeStateTimeout: ReturnType<typeof setTimeout> | undefined;
   let readyTreeStateInterval: ReturnType<typeof setInterval> | undefined;
   let focusTreeStateTimeout: ReturnType<typeof setTimeout> | undefined;
@@ -121,7 +123,15 @@ export function connectFoQueryChildFrameDevtools(
   };
 
   const requestFocus = (xpath: string, requestOptions?: Types.RequestFocusOptions) => {
-    const request = new FoQueryFrameRequest(xpath);
+    const request: FoQueryFrameRequest = new FoQueryFrameRequest(xpath, () => {
+      postToParent({
+        source: FOQUERY_FRAME_MESSAGE_SOURCE,
+        version: FOQUERY_FRAME_MESSAGE_VERSION,
+        type: "cancel-focus",
+        frameId,
+        requestId: request.requestId,
+      });
+    });
     pendingRequests.set(request.requestId, request);
     postToParent({
       source: FOQUERY_FRAME_MESSAGE_SOURCE,
@@ -152,12 +162,15 @@ export function connectFoQueryChildFrameDevtools(
     const message = parseFrameMessage(event.data);
     if (!message || message.frameId !== frameId) return;
     if (parentOrigin !== "*" && event.origin !== parentOrigin) return;
+    if (verifySource && event.source !== win.parent) return;
 
     if (message.type === "delegate-focus") {
       const localRequest = new FoQueryRequest(message.xpath, rootNode.root, message.options, {
         skipAppCoordination: true,
       });
+      delegatedRequests.set(message.requestId, localRequest);
       localRequest.promise.then((status) => {
+        delegatedRequests.delete(message.requestId);
         postToParent({
           source: FOQUERY_FRAME_MESSAGE_SOURCE,
           version: FOQUERY_FRAME_MESSAGE_VERSION,
@@ -172,6 +185,8 @@ export function connectFoQueryChildFrameDevtools(
     } else if (message.type === "focus-result") {
       pendingRequests.get(message.requestId)?.complete(message.status);
       pendingRequests.delete(message.requestId);
+    } else if (message.type === "cancel-focus") {
+      delegatedRequests.get(message.requestId)?.cancel();
     } else if (message.type === "devtools-highlight") {
       highlightDevtoolsTarget(rootNode, message.xpath);
     } else if (message.type === "devtools-clear-highlight") {
@@ -232,6 +247,8 @@ export function connectFoQueryChildFrameDevtools(
       rootNode.root.requestFocus = originalRootRequestFocus;
       pendingRequests.forEach((request) => request.cancel());
       pendingRequests.clear();
+      delegatedRequests.forEach((request) => request.cancel());
+      delegatedRequests.clear();
       if (activeChildFrameConnections.get(rootNode) === connection) {
         activeChildFrameConnections.delete(rootNode);
       }
@@ -457,20 +474,27 @@ class FoQueryFrameRequest implements Types.Request {
   public readonly diagnostics = undefined;
   public status: Types.RequestStatus = RequestStatus.Waiting;
 
-  constructor(public readonly xpath: string) {
+  constructor(
+    public readonly xpath: string,
+    private readonly _onCancel?: () => void,
+  ) {
     this.promise = new Promise((resolve) => {
       this._resolve = resolve;
     });
   }
 
-  public complete(status: Types.RequestStatus): void {
-    if (!this._resolve) return;
+  public complete(status: Types.RequestStatus): boolean {
+    if (!this._resolve) return false;
     this.status = status;
     this._resolve(status);
     this._resolve = undefined;
+    return true;
   }
 
+  /** Cancels locally and tells the other frame to stop working on the request. */
   public cancel(): void {
-    this.complete(RequestStatus.Canceled);
+    if (this.complete(RequestStatus.Canceled)) {
+      this._onCancel?.();
+    }
   }
 }

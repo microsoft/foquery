@@ -8,6 +8,7 @@ import { FoQueryDOMParent, FoQueryDOMLeaf } from "./foquery-dom-parent";
 
 const ROOT_ATTR = "data-foquery-root";
 const PARENT_ATTR = "data-foquery-parent";
+const LEAF_ATTR = "data-foquery-leaf";
 
 export class FoQueryDOMRoot {
   private _rootNode: FoQueryRootNode;
@@ -55,6 +56,18 @@ export class FoQueryDOMRoot {
   }
 
   private _handleRemovedSubtree(element: HTMLElement): void {
+    // Moved within the root (removed and re-inserted before the observer ran).
+    if (this._element.contains(element)) return;
+
+    // Leaves first: removing a parent does not detach its leaves' focus listeners.
+    const leafElements = Array.from(element.querySelectorAll(`[${LEAF_ATTR}]`));
+    if (element.hasAttribute(LEAF_ATTR)) leafElements.unshift(element);
+    leafElements.forEach((leafEl) => {
+      (
+        leafEl as HTMLElement & { __foQueryDOMLeaf?: { remove: () => void } }
+      ).__foQueryDOMLeaf?.remove();
+    });
+
     if (element.hasAttribute(PARENT_ATTR)) {
       this._detachParentElement(element);
     }

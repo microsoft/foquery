@@ -2,7 +2,7 @@
  * Copyright (c) Microsoft Corporation. All rights reserved.
  * Licensed under the MIT License.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import * as React from "react";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
@@ -402,5 +402,53 @@ describe("useFoQuery", () => {
 
     root.unmount();
     container.remove();
+  });
+
+  it("renames on changed names and does not notify for inline arrays with equal names", () => {
+    let ctx: FoQueryContextProps | undefined;
+
+    function Leaf({ names }: { names: string[] }) {
+      const ref = useFoQuery<HTMLButtonElement>(names);
+      return <button ref={ref}>Leaf</button>;
+    }
+
+    function Capture({ names }: { names: string[] }) {
+      ctx = React.useContext(FoQueryContext);
+      return (
+        <FoQueryParent name="Card">
+          <Leaf names={names} />
+        </FoQueryParent>
+      );
+    }
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    const render = (names: string[]) =>
+      flushSync(() => {
+        root.render(
+          <FoQueryProvider window={window}>
+            <Capture names={names} />
+          </FoQueryProvider>,
+        );
+      });
+
+    try {
+      render(["A"]);
+      const listener = vi.fn();
+      const unsubscribe = ctx!.subscribe(listener);
+
+      render(["A"]);
+      expect(listener).not.toHaveBeenCalled();
+
+      render(["B", "B"]);
+      expect(ctx!.query("//Card/A")).toHaveLength(0);
+      expect(ctx!.query("//Card/B")).toHaveLength(1);
+      expect(listener).toHaveBeenCalled();
+      unsubscribe();
+    } finally {
+      root.unmount();
+      container.remove();
+    }
   });
 });

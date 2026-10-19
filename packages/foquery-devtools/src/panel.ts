@@ -169,7 +169,7 @@ function inspectActiveElementExpression(): string {
 
 function highlightElementExpression(globalName: string, leafIndex: number): string {
   return `(function() {
-    var inst = window["${globalName}"];
+    var inst = window[${JSON.stringify(globalName)}];
     if (!inst) return;
     var root = inst.root;
     var highlightKey = "${HIGHLIGHT_KEY}";
@@ -338,7 +338,7 @@ function clearHighlightExpression(): string {
 
 function inspectElementExpression(globalName: string, leafIndex: number): string {
   return `(function() {
-    var inst = window["${globalName}"];
+    var inst = window[${JSON.stringify(globalName)}];
     if (!inst) return;
     var root = inst.root;
     var idx = 0; var targetLeaf = null;
@@ -745,10 +745,16 @@ async function refreshActiveElement(): Promise<void> {
 
 // --- Refresh & Query ---
 
+// Evals resolve asynchronously; these counters drop responses superseded by newer calls.
+let treeGeneration = 0;
+let queryGeneration = 0;
+
 async function refreshTree(): Promise<void> {
   const globalName = globalNameInput.value;
+  const generation = ++treeGeneration;
   try {
     const tree = (await evalInPage(serializeTreeExpression(globalName))) as SerializedNode | null;
+    if (generation !== treeGeneration) return;
     if (tree) {
       statusEl.className = "connected";
       treeEl.innerHTML = "";
@@ -774,6 +780,7 @@ async function refreshTree(): Promise<void> {
       treeEl.innerHTML = '<span style="color:#808080">No FoQuery root found</span>';
     }
   } catch {
+    if (generation !== treeGeneration) return;
     statusEl.className = "";
     treeEl.innerHTML = '<span style="color:#f44747">Error connecting</span>';
   }
@@ -796,6 +803,7 @@ async function checkActiveRequest(): Promise<void> {
 async function runQuery(): Promise<void> {
   const globalName = globalNameInput.value;
   const xpath = xpathInput.value.trim();
+  const generation = ++queryGeneration;
 
   if (!xpath) {
     xpathStatusEl.className = "";
@@ -821,6 +829,7 @@ async function runQuery(): Promise<void> {
         remoteXPath?: string;
       }[];
     };
+    if (generation !== queryGeneration) return;
 
     if (response.error) {
       xpathStatusEl.className = "invalid";
@@ -840,6 +849,7 @@ async function runQuery(): Promise<void> {
     }
     applyHighlights();
   } catch {
+    if (generation !== queryGeneration) return;
     xpathStatusEl.className = "invalid";
     xpathInput.className = "invalid";
     xpathResults.textContent = "error";

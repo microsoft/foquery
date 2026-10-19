@@ -64,6 +64,13 @@ export type FoQueryFrameMessage =
       frameId: string;
       requestId: string;
       status: Types.RequestStatus;
+    }
+  | {
+      source: typeof FOQUERY_FRAME_MESSAGE_SOURCE;
+      version: typeof FOQUERY_FRAME_MESSAGE_VERSION;
+      type: "cancel-focus";
+      frameId: string;
+      requestId: string;
     };
 
 export interface FoQueryIFrameParentOptions {
@@ -77,6 +84,12 @@ export interface FoQueryIFrameParentOptions {
 export interface FoQueryChildFrameOptions {
   frameId?: string;
   parentOrigin?: string;
+  /**
+   * Only accept messages whose `source` is the parent window. Defaults to `true`.
+   * Disable when the parent frame's code drives this frame from its own JS realm
+   * (e.g. rendering into a same-origin iframe), where `event.source` is the caller's window.
+   */
+  verifySource?: boolean;
 }
 
 export interface FoQueryChildFrameConnection {
@@ -99,6 +112,7 @@ export class FoQueryIFrameParentNode extends FoQueryParentNode {
   private readonly _targetOrigin: string;
   private readonly _verifySource: boolean;
   private readonly _pendingRequests = new Map<string, FoQueryFrameRequest>();
+  private readonly _childRequests = new Map<string, Types.Request>();
   private readonly _onMessage: (event: MessageEvent) => void;
 
   public readonly iframe: HTMLIFrameElement;
@@ -143,25 +157,28 @@ export class FoQueryIFrameParentNode extends FoQueryParentNode {
     this._frameRoot.window.removeEventListener("message", this._onMessage);
     this._pendingRequests.forEach((request) => request.cancel());
     this._pendingRequests.clear();
+    this._childRequests.clear();
     this.node.iframeDelegateFocus = undefined;
+
+    // Without a delegate, stale remote elements would match but could never be focused.
+    if (this._removeRemoteSnapshot()) {
+      this._frameRoot.notify(this.node);
+    }
   }
 
   private _handleMessage(event: MessageEvent): void {
     const message = parseFoQueryFrameMessage(event.data);
     if (!message || message.frameId !== this.frameId) return;
     if (!this._acceptsOrigin(event.origin)) return;
-    if (
-      this._verifySource &&
-      this.iframe.contentWindow &&
-      event.source !== this.iframe.contentWindow
-    )
-      return;
+    if (this._verifySource && event.source !== this.iframe.contentWindow) return;
 
-    if (message.type === "tree-state") {
-      this.handleFrameMessage(message);
-    } else if (message.type === "focus-result") {
-      this.handleFrameMessage(message);
-    } else if (message.type === "request-focus") {
+    if (
+      message.type === "child-ready" ||
+      message.type === "tree-state" ||
+      message.type === "focus-result" ||
+      message.type === "request-focus" ||
+      message.type === "cancel-focus"
+    ) {
       this.handleFrameMessage(message);
     }
   }
@@ -169,13 +186,21 @@ export class FoQueryIFrameParentNode extends FoQueryParentNode {
   public handleFrameMessage(message: FoQueryFrameMessage): void {
     if (message.frameId !== this.frameId) return;
 
-    if (message.type === "tree-state") {
+    if (message.type === "child-ready") {
+      // A (re)loaded child document never answers requests sent to its predecessor.
+      this._pendingRequests.forEach((request) => request.complete(RequestStatus.Canceled));
+      this._pendingRequests.clear();
+    } else if (message.type === "tree-state") {
       this._importSnapshot(message.snapshot);
     } else if (message.type === "focus-result") {
       this._pendingRequests.get(message.requestId)?.complete(message.status);
       this._pendingRequests.delete(message.requestId);
     } else if (message.type === "request-focus") {
       this._handleChildRequestFocus(message);
+    } else if (message.type === "cancel-focus") {
+      const request = this._childRequests.get(message.requestId);
+      this._childRequests.delete(message.requestId);
+      request?.cancel();
     }
   }
 
@@ -184,36 +209,57 @@ export class FoQueryIFrameParentNode extends FoQueryParentNode {
   }
 
   private _importSnapshot(snapshot: SerializedFoQueryNode): void {
+    let remoteChildren: Types.XmlElement[];
+    try {
+      if (!snapshot || typeof snapshot !== "object") return;
+      remoteChildren = getSerializedChildren(snapshot).map((child) =>
+        this._createRemoteElement(child, []),
+      );
+    } catch {
+      // Malformed snapshot (e.g. invalid XML names) — keep the previous one.
+      return;
+    }
+
     this._removeRemoteSnapshot();
 
-    for (const child of snapshot.children ?? []) {
-      this.xmlElement.appendChild(this._createRemoteElement(child, []));
+    for (const child of remoteChildren) {
+      this.xmlElement.appendChild(child);
     }
 
     this._frameRoot.notify(this.node);
   }
 
-  private _removeRemoteSnapshot(): void {
-    this.xmlElement
-      .querySelectorAll(`[${REMOTE_FRAME_ID_ATTR}="${this.frameId}"]`)
-      .forEach((node) => node.remove());
+  private _removeRemoteSnapshot(): boolean {
+    let removed = false;
+    for (const child of Array.from(this.xmlElement.children)) {
+      if (child.getAttribute(REMOTE_FRAME_ID_ATTR) === this.frameId) {
+        child.remove();
+        removed = true;
+      }
+    }
+    return removed;
   }
 
   private _createRemoteElement(
     node: SerializedFoQueryNode,
     parentSegments: string[],
   ): Types.XmlElement {
+    if (!node || typeof node !== "object" || typeof node.name !== "string") {
+      throw new TypeError("Invalid FoQuery snapshot node");
+    }
+
     const xmlElement = this._frameRoot.xmlDoc.createElement(node.name) as Types.XmlElement;
     const segments = [...parentSegments, node.name];
     const childXPath = `//${segments.join("/")}`;
 
-    xmlElement.setAttribute("type", node.type);
+    xmlElement.setAttribute("type", node.type === "leaf" ? "leaf" : "parent");
     xmlElement.setAttribute(REMOTE_FRAME_ID_ATTR, this.frameId);
     if (node.iframe) {
       xmlElement.setAttribute("foquery-iframe", "true");
     }
-    if (node.lastFocused !== undefined) {
-      xmlElement.setAttribute("lastFocused", node.lastFocused.toString());
+    const lastFocused = Number.isFinite(node.lastFocused) ? node.lastFocused : undefined;
+    if (lastFocused !== undefined) {
+      xmlElement.setAttribute("lastFocused", lastFocused.toString());
     }
 
     xmlElement.foQueryRemoteFrameRef = {
@@ -223,10 +269,10 @@ export class FoQueryIFrameParentNode extends FoQueryParentNode {
       targetOrigin: this._targetOrigin,
       childXPath,
       leaf: node.type === "leaf",
-      lastFocused: node.lastFocused,
+      lastFocused,
     };
 
-    for (const child of node.children ?? []) {
+    for (const child of getSerializedChildren(node)) {
       xmlElement.appendChild(this._createRemoteElement(child, segments));
     }
 
@@ -234,7 +280,15 @@ export class FoQueryIFrameParentNode extends FoQueryParentNode {
   }
 
   private _delegateFocus(xpath: string, options?: Types.RequestFocusOptions): Types.Request {
-    const request = new FoQueryFrameRequest(xpath);
+    const request: FoQueryFrameRequest = new FoQueryFrameRequest(xpath, () => {
+      this._postToChild({
+        source: FOQUERY_FRAME_MESSAGE_SOURCE,
+        version: FOQUERY_FRAME_MESSAGE_VERSION,
+        type: "cancel-focus",
+        frameId: this.frameId,
+        requestId: request.requestId,
+      });
+    });
     this._pendingRequests.set(request.requestId, request);
 
     this._postToChild({
@@ -263,7 +317,11 @@ export class FoQueryIFrameParentNode extends FoQueryParentNode {
     const coordinatedRequest =
       this._frameRoot.requestFocus?.(coordinatedXPath, message.options) ??
       new FoQueryRequest(coordinatedXPath, this._frameRoot, message.options);
+    this._childRequests.set(message.requestId, coordinatedRequest);
     coordinatedRequest.promise.then((status) => {
+      if (this._childRequests.get(message.requestId) === coordinatedRequest) {
+        this._childRequests.delete(message.requestId);
+      }
       this._postToChild({
         source: FOQUERY_FRAME_MESSAGE_SOURCE,
         version: FOQUERY_FRAME_MESSAGE_VERSION,
@@ -293,10 +351,12 @@ export function connectFoQueryChildFrame(
 
   const frameId = options?.frameId ?? createFrameId();
   const parentOrigin = options?.parentOrigin ?? "*";
+  const verifySource = options?.verifySource ?? true;
   const win = rootNode.root.window;
   const originalRequestFocus = rootNode.requestFocus.bind(rootNode);
   const originalRootRequestFocus = rootNode.root.requestFocus;
   const pendingRequests = new Map<string, FoQueryFrameRequest>();
+  const delegatedRequests = new Map<string, Types.Request>();
   let readyTreeStateTimeout: ReturnType<typeof setTimeout> | undefined;
   let readyTreeStateInterval: ReturnType<typeof setInterval> | undefined;
   let disposed = false;
@@ -316,7 +376,15 @@ export function connectFoQueryChildFrame(
   };
 
   const requestFocus = (xpath: string, requestOptions?: Types.RequestFocusOptions) => {
-    const request = new FoQueryFrameRequest(xpath);
+    const request: FoQueryFrameRequest = new FoQueryFrameRequest(xpath, () => {
+      postToParent({
+        source: FOQUERY_FRAME_MESSAGE_SOURCE,
+        version: FOQUERY_FRAME_MESSAGE_VERSION,
+        type: "cancel-focus",
+        frameId,
+        requestId: request.requestId,
+      });
+    });
     pendingRequests.set(request.requestId, request);
     postToParent({
       source: FOQUERY_FRAME_MESSAGE_SOURCE,
@@ -337,12 +405,16 @@ export function connectFoQueryChildFrame(
     const message = parseFoQueryFrameMessage(event.data);
     if (!message || message.frameId !== frameId) return;
     if (parentOrigin !== "*" && event.origin !== parentOrigin) return;
+    if (verifySource && event.source !== win.parent) return;
 
     if (message.type === "delegate-focus") {
       const localRequest = new FoQueryRequest(message.xpath, rootNode.root, message.options, {
         skipAppCoordination: true,
       });
+      delegatedRequests.set(message.requestId, localRequest);
       localRequest.promise.then((status) => {
+        delegatedRequests.delete(message.requestId);
+        if (disposed) return;
         postToParent({
           source: FOQUERY_FRAME_MESSAGE_SOURCE,
           version: FOQUERY_FRAME_MESSAGE_VERSION,
@@ -357,6 +429,8 @@ export function connectFoQueryChildFrame(
     } else if (message.type === "focus-result") {
       pendingRequests.get(message.requestId)?.complete(message.status);
       pendingRequests.delete(message.requestId);
+    } else if (message.type === "cancel-focus") {
+      delegatedRequests.get(message.requestId)?.cancel();
     }
   };
 
@@ -403,8 +477,10 @@ export function connectFoQueryChildFrame(
       }
       rootNode.requestFocus = originalRequestFocus;
       rootNode.root.requestFocus = originalRootRequestFocus;
-      pendingRequests.forEach((request) => request.cancel());
+      pendingRequests.forEach((request) => request.complete(RequestStatus.Canceled));
       pendingRequests.clear();
+      delegatedRequests.forEach((request) => request.cancel());
+      delegatedRequests.clear();
       if (activeChildFrameConnections.get(rootNode) === connection) {
         activeChildFrameConnections.delete(rootNode);
       }
@@ -440,6 +516,12 @@ function parseFoQueryFrameMessage(data: unknown): FoQueryFrameMessage | undefine
   if (typeof message.type !== "string") return undefined;
   if (typeof message.frameId !== "string") return undefined;
   return message as FoQueryFrameMessage;
+}
+
+function getSerializedChildren(node: SerializedFoQueryNode): SerializedFoQueryNode[] {
+  if (node.children === undefined) return [];
+  if (!Array.isArray(node.children)) throw new TypeError("Invalid FoQuery snapshot children");
+  return node.children;
 }
 
 function serializeRequestFocusOptions(
@@ -516,20 +598,27 @@ class FoQueryFrameRequest implements Types.Request {
   public readonly diagnostics = undefined;
   public status: Types.RequestStatus = RequestStatus.Waiting;
 
-  constructor(public readonly xpath: string) {
+  constructor(
+    public readonly xpath: string,
+    private readonly _onCancel?: () => void,
+  ) {
     this.promise = new Promise((resolve) => {
       this._resolve = resolve;
     });
   }
 
-  public complete(status: Types.RequestStatus): void {
-    if (!this._resolve) return;
+  public complete(status: Types.RequestStatus): boolean {
+    if (!this._resolve) return false;
     this.status = status;
     this._resolve(status);
     this._resolve = undefined;
+    return true;
   }
 
+  /** Cancels locally and tells the other frame to stop working on the request. */
   public cancel(): void {
-    this.complete(RequestStatus.Canceled);
+    if (this.complete(RequestStatus.Canceled)) {
+      this._onCancel?.();
+    }
   }
 }

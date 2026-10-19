@@ -28,9 +28,9 @@ export function useFoQuery<T extends HTMLElement>(
     const leafNode = leafNodeRef.current;
     if (!leafNode) return;
 
-    leafNode.leaf.names = names;
     leafNode.leaf.focus = focus;
 
+    // rename() is a no-op when the names are unchanged.
     leafNode.rename(names);
   }, [namesKey, focus, names]);
 

@@ -14,6 +14,7 @@ export function FoQueryDevtoolsFrameProvider({
   rootName,
   frameId,
   parentOrigin,
+  verifySource,
   children,
 }: FoQueryFrameProviderProps) {
   const rootNodeRef = useRef<FoQueryRootNode | null>(null);
@@ -27,14 +28,14 @@ export function FoQueryDevtoolsFrameProvider({
   const root = rootNode.root;
 
   useLayoutEffect(() => {
-    const connection = connectFoQueryChildFrame(rootNode, { frameId, parentOrigin });
+    const connection = connectFoQueryChildFrame(rootNode, { frameId, parentOrigin, verifySource });
     connectionRef.current = connection;
 
     return () => {
       connection.dispose();
       connectionRef.current = null;
     };
-  }, [frameId, parentOrigin, rootNode]);
+  }, [frameId, parentOrigin, rootNode, verifySource]);
 
   const contextProps = useMemo<FoQueryContextProps>(
     () => ({

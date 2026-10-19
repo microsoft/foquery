@@ -60,7 +60,7 @@ export class FoQueryParentNode implements Types.FoQueryParentNode {
   }
 
   public requestFocus(xpath: string, options?: Types.RequestFocusOptions): FoQueryRequest {
-    return new FoQueryRequest(xpath, this.node, options);
+    return new FoQueryRequest(xpath, this.node, options, { root: this._root });
   }
 
   public registerCheck(callback: Types.CheckCallback): () => void {

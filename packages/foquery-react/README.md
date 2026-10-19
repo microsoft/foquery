@@ -110,3 +110,5 @@ function ChildFrameApp() {
 ```
 
 The parent can focus into the iframe with `//message/CardInIframe//Card/DefaultFocusable`. Requests made inside the child frame are posted upward to the owning FoQuery app root and routed back down without exposing the parent tree to the child.
+
+When the parent app renders the child React tree into a same-origin iframe itself (one JavaScript realm for both frames), set `verifySource={false}` on both `FoQueryIFrameParent` and `FoQueryFrameProvider`.
