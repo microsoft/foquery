@@ -6,9 +6,11 @@ import type { Types } from "foquery";
 import { FoQueryIFrameParentNode, connectFoQueryChildFrame } from "foquery/iframe";
 import type { FoQueryIFrameParentOptions, FoQueryChildFrameOptions } from "foquery/iframe";
 import { FoQueryDOMRoot } from "./foquery-dom-root";
-import { FoQueryDOMParent } from "./foquery-dom-parent";
+import { FoQueryDOMParent, type FoQueryDOMParentBinding } from "./foquery-dom-parent";
 
 const PARENT_ATTR = "data-foquery-parent";
+
+type IFrameWithBinding = HTMLIFrameElement & { __foQueryParent?: FoQueryDOMParentBinding };
 
 interface DOMRootWithCore {
   root: Types.RootNode;
@@ -38,6 +40,11 @@ export class FoQueryDOMIFrameParent {
     this._coreNode = coreNode;
     iframe.setAttribute(PARENT_ATTR, coreNode.node.name);
     iframe.setAttribute("data-foquery-iframe-parent", coreNode.frameId);
+    // Lets FoQueryDOMRoot's MutationObserver clean this node up when the iframe is removed.
+    (iframe as IFrameWithBinding).__foQueryParent = {
+      node: coreNode.node,
+      remove: () => this.remove(),
+    };
   }
 
   public rename(name: string): void {
@@ -49,6 +56,9 @@ export class FoQueryDOMIFrameParent {
     this._coreNode.remove();
     this._iframe.removeAttribute(PARENT_ATTR);
     this._iframe.removeAttribute("data-foquery-iframe-parent");
+    if ((this._iframe as IFrameWithBinding).__foQueryParent?.node === this._coreNode.node) {
+      delete (this._iframe as IFrameWithBinding).__foQueryParent;
+    }
   }
 }
 

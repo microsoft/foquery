@@ -104,4 +104,78 @@ describe("FoQueryDOMRoot", () => {
 
     container.remove();
   });
+
+  it("auto-removes a leaf whose own element is removed", async () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const domRoot = new FoQueryDOMRoot(container);
+    const parentEl = document.createElement("div");
+    const leafEl = document.createElement("button");
+    container.appendChild(parentEl);
+    parentEl.appendChild(leafEl);
+    const parent = domRoot.appendParent(parentEl, "main");
+    const leaf = parent.appendLeaf(leafEl, ["Action"]);
+
+    try {
+      leafEl.remove();
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(domRoot.query("//main/Action")).toHaveLength(0);
+      expect(parent.node.leafs.has(leaf.leaf)).toBe(false);
+      expect(leafEl.hasAttribute("data-foquery-leaf")).toBe(false);
+      expect(domRoot.query("//main")).toHaveLength(1);
+    } finally {
+      domRoot.dispose();
+      container.remove();
+    }
+  });
+
+  it("detaches leaves nested in a removed parent so they stop tracking focus", async () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const domRoot = new FoQueryDOMRoot(container);
+    const parentEl = document.createElement("div");
+    const leafEl = document.createElement("button");
+    container.appendChild(parentEl);
+    parentEl.appendChild(leafEl);
+    const parent = domRoot.appendParent(parentEl, "main");
+    const leaf = parent.appendLeaf(leafEl, ["Action"]);
+
+    try {
+      parentEl.remove();
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(leaf.leaf.parent).toBeUndefined();
+      expect(leafEl.hasAttribute("data-foquery-leaf")).toBe(false);
+    } finally {
+      domRoot.dispose();
+      container.remove();
+    }
+  });
+
+  it("keeps nodes whose elements are moved within the same root", async () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const domRoot = new FoQueryDOMRoot(container);
+    const firstSlot = document.createElement("section");
+    const secondSlot = document.createElement("section");
+    const parentEl = document.createElement("div");
+    const leafEl = document.createElement("button");
+    container.append(firstSlot, secondSlot);
+    firstSlot.appendChild(parentEl);
+    parentEl.appendChild(leafEl);
+    const parent = domRoot.appendParent(parentEl, "main");
+    parent.appendLeaf(leafEl, ["Action"]);
+
+    try {
+      secondSlot.appendChild(parentEl);
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(domRoot.query("//main/Action")).toHaveLength(1);
+      expect(parentEl.getAttribute("data-foquery-parent")).toBe("main");
+    } finally {
+      domRoot.dispose();
+      container.remove();
+    }
+  });
 });

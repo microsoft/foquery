@@ -13,6 +13,7 @@ import { FoQueryProvider } from "./foquery-provider";
 import { FoQueryContext, FoQueryContextProps } from "./foquery-context";
 import { FoQueryFrameProvider, FoQueryIFrameParent } from "./iframe";
 import { RequestStatus } from "foquery";
+import { FOQUERY_FRAME_MESSAGE_SOURCE, FOQUERY_FRAME_MESSAGE_VERSION } from "foquery/iframe";
 
 describe("foquery-react iframe support", () => {
   it("registers an iframe-backed parent in the React tree", () => {
@@ -175,6 +176,7 @@ describe("foquery-react iframe support", () => {
                 window={frameWindow}
                 rootName="LevelThreeRoot"
                 frameId={LEVEL_THREE_FRAME_ID}
+                verifySource={false}
               >
                 <LevelThreeCardContent />
               </FoQueryFrameProvider>
@@ -197,6 +199,7 @@ describe("foquery-react iframe support", () => {
                     window={frameWindow}
                     rootName="NestedFrameRoot"
                     frameId={NESTED_FRAME_ID}
+                    verifySource={false}
                   >
                     <NestedCardContent />
                   </FoQueryFrameProvider>
@@ -220,6 +223,7 @@ describe("foquery-react iframe support", () => {
                     window={frameWindow}
                     rootName="FrameRoot"
                     frameId={CARD_FRAME_ID}
+                    verifySource={false}
                   >
                     <CardContent includeNested />
                   </FoQueryFrameProvider>
@@ -231,6 +235,7 @@ describe("foquery-react iframe support", () => {
                     window={frameWindow}
                     rootName="SecondaryFrameRoot"
                     frameId={SECONDARY_FRAME_ID}
+                    verifySource={false}
                   >
                     <CardContent />
                   </FoQueryFrameProvider>
@@ -265,5 +270,80 @@ describe("foquery-react iframe support", () => {
 
     root.unmount();
     container.remove();
+  });
+
+  it("keeps the iframe node and its imported snapshot when name, focus, or inline arbiter change", () => {
+    let rootContext: FoQueryContextProps | undefined;
+    let iframe: HTMLIFrameElement | null = null;
+
+    function RootCapture({ name, focus }: { name: string; focus?: string }) {
+      const iframeRef = React.useRef<HTMLIFrameElement>(null);
+      rootContext = React.useContext(FoQueryContext);
+
+      return (
+        <FoQueryIFrameParent
+          name={name}
+          focus={focus}
+          iframeRef={iframeRef}
+          frameId="stable-frame"
+          arbiter={(candidates) => candidates[0]}
+        >
+          <iframe
+            ref={(element) => {
+              iframeRef.current = element;
+              iframe = element;
+            }}
+          />
+        </FoQueryIFrameParent>
+      );
+    }
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    const render = (name: string, focus?: string) =>
+      flushSync(() => {
+        root.render(
+          <FoQueryProvider window={window}>
+            <RootCapture name={name} focus={focus} />
+          </FoQueryProvider>,
+        );
+      });
+
+    try {
+      render("First");
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: {
+            source: FOQUERY_FRAME_MESSAGE_SOURCE,
+            version: FOQUERY_FRAME_MESSAGE_VERSION,
+            type: "tree-state",
+            frameId: "stable-frame",
+            snapshot: {
+              type: "parent",
+              name: "FrameRoot",
+              children: [{ type: "leaf", name: "DefaultFocusable" }],
+            },
+          },
+          origin: window.location.origin,
+          source: iframe!.contentWindow,
+        }),
+      );
+      const [frameElement] = rootContext!.query("//First");
+      const frameNode = frameElement.foQueryIFrameParentNode;
+      expect(rootContext!.query("//First/DefaultFocusable")).toHaveLength(1);
+
+      render("First");
+      render("Second", "DefaultFocusable");
+
+      expect(rootContext!.query("//First")).toHaveLength(0);
+      expect(rootContext!.query("//Second/DefaultFocusable")).toHaveLength(1);
+      const [renamedElement] = rootContext!.query("//Second");
+      expect(renamedElement.foQueryIFrameParentNode).toBe(frameNode);
+      expect(frameNode?.focus).toBe("DefaultFocusable");
+    } finally {
+      root.unmount();
+      container.remove();
+    }
   });
 });

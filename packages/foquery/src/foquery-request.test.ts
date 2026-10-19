@@ -1771,4 +1771,231 @@ describe("FoQueryRequest", () => {
 
     document.body.removeChild(el);
   });
+  // --- Corner cases ---
+
+  it("does not recurse forever when a parent focus xpath selects the parent itself", async () => {
+    const rootNode = new FoQueryRootNode(window);
+    const main = new FoQueryParentNode("main", rootNode.root, { focus: "." });
+    rootNode.appendParent(main);
+
+    const request = rootNode.requestFocus("//main", { timeout: 50 });
+
+    await expect(request.promise).resolves.toBe(RequestStatus.TimedOut);
+  });
+
+  it("does not recurse forever on mutually referencing parent focus xpaths", async () => {
+    const rootNode = new FoQueryRootNode(window);
+    const a = new FoQueryParentNode("a", rootNode.root, { focus: "./b" });
+    const b = new FoQueryParentNode("b", rootNode.root, { focus: ".. | ./Item" });
+    rootNode.appendParent(a);
+    a.appendParent(b);
+
+    const el = document.createElement("button");
+    document.body.appendChild(el);
+    b.appendLeaf(new FoQueryLeafNode(["Item"], rootNode.root), el);
+
+    const request = rootNode.requestFocus("//a");
+
+    await expect(request.promise).resolves.toBe(RequestStatus.Succeeded);
+    expect(document.activeElement).toBe(el);
+    el.remove();
+  });
+
+  it("allows the same parent to be visited through sibling (non-cyclic) focus paths", async () => {
+    const rootNode = new FoQueryRootNode(window);
+    const shared = new FoQueryParentNode("shared", rootNode.root, { focus: "./Item" });
+    const x = new FoQueryParentNode("x", rootNode.root, { focus: "../shared" });
+    const y = new FoQueryParentNode("y", rootNode.root, { focus: "../shared" });
+    rootNode.appendParent(shared);
+    rootNode.appendParent(x);
+    rootNode.appendParent(y);
+
+    const el = document.createElement("button");
+    shared.appendLeaf(new FoQueryLeafNode(["Item"], rootNode.root), el);
+
+    const request = rootNode.requestFocus("//x | //y");
+    await request.promise;
+
+    expect(request.diagnostics!.candidates).toHaveLength(2);
+    expect(request.status).toBe(RequestStatus.Succeeded);
+  });
+
+  it("parent.requestFocus works on a detached parent and resolves once it is attached", async () => {
+    const rootNode = new FoQueryRootNode(window);
+    const main = new FoQueryParentNode("main", rootNode.root);
+
+    const request = main.requestFocus("./Item");
+    expect(request.status).toBe(RequestStatus.Waiting);
+
+    const el = document.createElement("button");
+    document.body.appendChild(el);
+    main.appendLeaf(new FoQueryLeafNode(["Item"], rootNode.root), el);
+    rootNode.appendParent(main);
+
+    await expect(request.promise).resolves.toBe(RequestStatus.Succeeded);
+    el.remove();
+  });
+
+  it("does not deadlock app coordination when a queued request is canceled before it starts", async () => {
+    const rootNode = new FoQueryRootNode(window);
+    const main = new FoQueryParentNode("main", rootNode.root);
+    rootNode.appendParent(main);
+
+    // Hold the active slot by making the active request wait for a delegated focus result.
+    let finishDelegated: ((status: Types.RequestStatus) => void) | undefined;
+    main.node.iframeDelegateFocus = (xpath) => {
+      const request: Types.Request = {
+        xpath,
+        diagnostics: undefined,
+        status: RequestStatus.Waiting,
+        promise: new Promise<Types.RequestStatus>((resolve) => {
+          finishDelegated = (status) => {
+            request.status = status;
+            resolve(status);
+          };
+        }),
+        cancel: () => finishDelegated?.(RequestStatus.Canceled),
+      };
+      return request;
+    };
+    const remote = rootNode.root.xmlDoc.createElement("Remote") as Types.XmlElement;
+    const iframe = document.createElement("iframe");
+    remote.foQueryRemoteFrameRef = {
+      iframeParentNode: main.node,
+      iframeElement: new WeakRef(iframe),
+      frameId: "frame",
+      targetOrigin: "*",
+      childXPath: "//Remote",
+      leaf: true,
+      lastFocused: undefined,
+    };
+    main.xmlElement.appendChild(remote);
+
+    const active = rootNode.requestFocus("//main/Remote");
+    expect(finishDelegated).toBeDefined();
+
+    const queued = rootNode.requestFocus("//nothing");
+    queued.cancel();
+    await queued.promise;
+    await Promise.resolve();
+
+    finishDelegated!(RequestStatus.Succeeded);
+    await active.promise;
+
+    const el = document.createElement("button");
+    document.body.appendChild(el);
+    main.appendLeaf(new FoQueryLeafNode(["Item"], rootNode.root), el);
+
+    const next = rootNode.requestFocus("//main/Item", { timeout: 500 });
+
+    await expect(next.promise).resolves.toBe(RequestStatus.Succeeded);
+    el.remove();
+  });
+
+  it("does not deadlock app coordination when a queued request times out before it starts", async () => {
+    const rootNode = new FoQueryRootNode(window);
+    const main = new FoQueryParentNode("main", rootNode.root);
+    rootNode.appendParent(main);
+
+    let finishDelegated: ((status: Types.RequestStatus) => void) | undefined;
+    main.node.iframeDelegateFocus = (xpath) => {
+      const request: Types.Request = {
+        xpath,
+        diagnostics: undefined,
+        status: RequestStatus.Waiting,
+        promise: new Promise<Types.RequestStatus>((resolve) => {
+          finishDelegated = (status) => {
+            request.status = status;
+            resolve(status);
+          };
+        }),
+        cancel: () => finishDelegated?.(RequestStatus.Canceled),
+      };
+      return request;
+    };
+    const remote = rootNode.root.xmlDoc.createElement("Remote") as Types.XmlElement;
+    remote.foQueryRemoteFrameRef = {
+      iframeParentNode: main.node,
+      iframeElement: new WeakRef(document.createElement("iframe")),
+      frameId: "frame",
+      targetOrigin: "*",
+      childXPath: "//Remote",
+      leaf: true,
+      lastFocused: undefined,
+    };
+    main.xmlElement.appendChild(remote);
+
+    const active = rootNode.requestFocus("//main/Remote");
+    const queued = rootNode.requestFocus("//nothing", { timeout: 10 });
+
+    await expect(queued.promise).resolves.toBe(RequestStatus.TimedOut);
+    // The active request is released by the delegated-focus handoff timeout.
+    await expect(active.promise).resolves.toBe(RequestStatus.Canceled);
+
+    const el = document.createElement("button");
+    document.body.appendChild(el);
+    main.appendLeaf(new FoQueryLeafNode(["Item"], rootNode.root), el);
+
+    const next = rootNode.requestFocus("//main/Item", { timeout: 500 });
+
+    await expect(next.promise).resolves.toBe(RequestStatus.Succeeded);
+    el.remove();
+  });
+
+  it("does not hang on a malformed xpath", async () => {
+    const rootNode = new FoQueryRootNode(window);
+
+    const request = rootNode.requestFocus("//main[", { timeout: 50 });
+
+    await expect(request.promise).resolves.toBe(RequestStatus.TimedOut);
+    expect(request.diagnostics!.matchedElements).toEqual([]);
+  });
+
+  it("timeout: 0 means no timeout", async () => {
+    const rootNode = new FoQueryRootNode(window);
+
+    const request = rootNode.requestFocus("//missing", { timeout: 0 });
+    await new Promise((r) => setTimeout(r, 30));
+
+    expect(request.status).toBe(RequestStatus.Waiting);
+    request.cancel();
+  });
+
+  it("ignores interaction inside [data-foquery-ignore] subtrees", async () => {
+    const rootNode = new FoQueryRootNode(window);
+    const ignored = document.createElement("div");
+    ignored.setAttribute("data-foquery-ignore", "");
+    const inner = document.createElement("button");
+    ignored.appendChild(inner);
+    document.body.appendChild(ignored);
+
+    const request = rootNode.requestFocus("//missing");
+    inner.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    inner.focus();
+
+    expect(request.status).toBe(RequestStatus.Waiting);
+    request.cancel();
+    ignored.remove();
+  });
+
+  it("does not focus a leaf that appears synchronously after the request was canceled", async () => {
+    const rootNode = new FoQueryRootNode(window);
+    const parent = new FoQueryParentNode("Late", rootNode.root);
+    rootNode.appendParent(parent);
+    const button = document.createElement("button");
+    document.body.appendChild(button);
+    const focusSpy = vi.spyOn(button, "focus");
+
+    try {
+      const request = rootNode.requestFocus("/Late/Target");
+      request.cancel();
+      parent.appendLeaf(new FoQueryLeafNode(["Target"], rootNode.root), button);
+
+      await expect(request.promise).resolves.toBe(RequestStatus.Canceled);
+      expect(focusSpy).not.toHaveBeenCalled();
+    } finally {
+      parent.remove();
+      button.remove();
+    }
+  });
 });

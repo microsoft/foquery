@@ -60,7 +60,7 @@ Nodes are tagged with data attributes for identification:
 
 ## Auto-cleanup
 
-When a DOM element with `data-foquery-parent` is removed from the DOM (including nested removals), the `MutationObserver` on the root automatically calls `remove()` on the corresponding parent node.
+When a DOM element with `data-foquery-parent` or `data-foquery-leaf` (including iframes added with `appendIFrameParent`) is removed from the root container (including nested removals), the `MutationObserver` on the root automatically calls `remove()` on the corresponding node. Elements that are moved to another position inside the same root are left attached.
 
 ## Optional iframe API
 

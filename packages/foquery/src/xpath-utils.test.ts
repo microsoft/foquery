@@ -37,6 +37,22 @@ describe("splitXPathExpressions", () => {
   it("trims whitespace", () => {
     expect(splitXPathExpressions("  //a  |  //b  ")).toEqual(["//a", "//b"]);
   });
+
+  it("does not split inside parenthesized unions", () => {
+    expect(splitXPathExpressions("(//a | //b)/c | //d")).toEqual(["(//a | //b)/c", "//d"]);
+  });
+
+  it("treats backslashes in string literals as plain characters", () => {
+    expect(splitXPathExpressions('//a[@x="\\"] | //b')).toEqual(['//a[@x="\\"]', "//b"]);
+  });
+
+  it("does not let brackets inside string literals affect depth", () => {
+    expect(splitXPathExpressions("//a[@x='['] | //b")).toEqual(["//a[@x='[']", "//b"]);
+  });
+
+  it("drops empty union branches", () => {
+    expect(splitXPathExpressions("//a | ")).toEqual(["//a"]);
+  });
 });
 
 describe("removeLastPredicate", () => {
@@ -58,6 +74,20 @@ describe("removeLastPredicate", () => {
 
   it("handles predicate in the middle", () => {
     expect(removeLastPredicate("//a[@x]/b")).toBe("//a/b");
+  });
+
+  it("ignores brackets inside string literals", () => {
+    expect(removeLastPredicate('//a[@x="["]/b')).toBe("//a/b");
+    expect(removeLastPredicate("//a[@x=']']")).toBe("//a");
+  });
+
+  it("removes predicates inside parentheses", () => {
+    expect(removeLastPredicate("(//a[@x])")).toBe("(//a)");
+  });
+
+  it("returns unbalanced predicates unchanged", () => {
+    expect(removeLastPredicate("//a[")).toBe("//a[");
+    expect(removeLastPredicate("//a[@x")).toBe("//a[@x");
   });
 });
 
@@ -88,6 +118,21 @@ describe("removeLastPathStep", () => {
 
   it("does not strip steps inside predicates", () => {
     expect(removeLastPathStep("//a[@x='y/z']/b")).toBe("//a[@x='y/z']");
+  });
+
+  it("treats descendant separators as path steps", () => {
+    expect(removeLastPathStep("//content//SelectedItem")).toBe("//content");
+    expect(removeLastPathStep("./a//b")).toBe("./a");
+  });
+
+  it("does not reduce relative descendant single step", () => {
+    expect(removeLastPathStep(".//a")).toBe(".//a");
+  });
+
+  it("does not strip steps inside parentheses or string literals", () => {
+    expect(removeLastPathStep("(//a/b)")).toBe("(//a/b)");
+    expect(removeLastPathStep("(//a | //b)/c")).toBe("(//a | //b)");
+    expect(removeLastPathStep('//a[@x="]/["]')).toBe('//a[@x="]/["]');
   });
 });
 
@@ -147,5 +192,15 @@ describe("generateXPathSimplifications", () => {
 
   it("handles empty string", () => {
     expect(generateXPathSimplifications("")).toEqual([]);
+  });
+
+  it("terminates on malformed xpath with an unbalanced predicate", () => {
+    expect(generateXPathSimplifications("//a/b[")).toEqual([["//a/b[", "//a"]]);
+  });
+
+  it("simplifies descendant separators", () => {
+    expect(generateXPathSimplifications("//content//SelectedItem[@x]")).toEqual([
+      ["//content//SelectedItem[@x]", "//content//SelectedItem", "//content"],
+    ]);
   });
 });

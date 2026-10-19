@@ -222,4 +222,53 @@ describe("FoQuery iframe devtools bridge", () => {
     connection.dispose();
     button.remove();
   });
+
+  it("supports cancel-focus and ignores spoofed message sources like the production bridge", async () => {
+    const rootNode = new FoQueryRootNode(window);
+    const card = new FoQueryParentNode("Card", rootNode.root);
+    rootNode.appendParent(card);
+    const button = createButton("Late target");
+    const focusSpy = vi.spyOn(button, "focus");
+    const postMessageSpy = vi.spyOn(window.parent, "postMessage");
+    postMessageSpy.mockClear();
+    const connection = connectFoQueryChildFrameDevtools(rootNode, { frameId: "child-frame" });
+    const send = (data: Record<string, unknown>, source: MessageEventSource = window.parent) =>
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: {
+            source: FOQUERY_FRAME_MESSAGE_SOURCE,
+            version: FOQUERY_FRAME_MESSAGE_VERSION,
+            frameId: "child-frame",
+            ...data,
+          },
+          origin: window.location.origin,
+          source,
+        }),
+      );
+
+    try {
+      send({ type: "delegate-focus", requestId: "spoofed", xpath: "//Card/Late" }, window);
+      send({ type: "delegate-focus", requestId: "late", xpath: "//Card/Late" });
+      send({ type: "cancel-focus", requestId: "late" });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      card.appendLeaf(new FoQueryLeafNode(["Late"], rootNode.root), button);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      expect(focusSpy).not.toHaveBeenCalled();
+
+      const request = rootNode.requestFocus("//Card/Other");
+      const requestMessage = postMessageSpy.mock.calls
+        .map(([message]) => message as { type?: string; requestId?: string })
+        .find((message) => message?.type === "request-focus")!;
+      request.cancel();
+
+      expect(postMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "cancel-focus", requestId: requestMessage.requestId }),
+        "*",
+      );
+    } finally {
+      connection.dispose();
+      button.remove();
+    }
+  });
 });

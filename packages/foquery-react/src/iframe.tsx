@@ -36,11 +36,15 @@ export function FoQueryIFrameParent({
 }: FoQueryIFrameParentProps) {
   const parentContext = useContext(FoQueryContext);
   const coreNodeRef = useRef<FoQueryIFrameParentNode | null>(null);
+  // Mutable props are applied in place below; recreating the node would drop the
+  // imported child snapshot, which the child frame only re-sends on changes.
+  const mutablePropsRef = useRef({ name, focus, arbiter });
 
   useLayoutEffect(() => {
     const iframe = iframeRef.current;
     if (!iframe || !parentContext || coreNodeRef.current) return;
 
+    const { name, focus, arbiter } = mutablePropsRef.current;
     const coreNode = new FoQueryIFrameParentNode(name, parentContext.root, iframe, {
       frameId,
       targetOrigin,
@@ -55,9 +59,10 @@ export function FoQueryIFrameParent({
       coreNode.remove();
       coreNodeRef.current = null;
     };
-  }, [arbiter, focus, frameId, iframeRef, name, parentContext, targetOrigin, verifySource]);
+  }, [frameId, iframeRef, parentContext, targetOrigin, verifySource]);
 
   useLayoutEffect(() => {
+    mutablePropsRef.current = { name, focus, arbiter };
     const coreNode = coreNodeRef.current;
     if (!coreNode) return;
     coreNode.rename(name);
@@ -73,6 +78,7 @@ export interface FoQueryFrameProviderProps {
   rootName?: string;
   frameId?: string;
   parentOrigin?: string;
+  verifySource?: boolean;
   children: React.ReactNode;
 }
 
@@ -81,6 +87,7 @@ export function FoQueryFrameProvider({
   rootName,
   frameId,
   parentOrigin,
+  verifySource,
   children,
 }: FoQueryFrameProviderProps) {
   const rootNodeRef = useRef<FoQueryRootNode | null>(null);
@@ -94,14 +101,14 @@ export function FoQueryFrameProvider({
   const root = rootNode.root;
 
   useLayoutEffect(() => {
-    const connection = connectFoQueryChildFrame(rootNode, { frameId, parentOrigin });
+    const connection = connectFoQueryChildFrame(rootNode, { frameId, parentOrigin, verifySource });
     connectionRef.current = connection;
 
     return () => {
       connection.dispose();
       connectionRef.current = null;
     };
-  }, [frameId, parentOrigin, rootNode]);
+  }, [frameId, parentOrigin, rootNode, verifySource]);
 
   const contextProps = useMemo<FoQueryContextProps>(
     () => ({

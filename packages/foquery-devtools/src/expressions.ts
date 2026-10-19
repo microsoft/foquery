@@ -5,7 +5,7 @@
 
 export function serializeTreeExpression(globalName: string): string {
   return `(function() {
-    var inst = window["${globalName}"];
+    var inst = window[${JSON.stringify(globalName)}];
     if (!inst) return null;
     var root = inst.root;
     var leafIdx = 0;
@@ -81,7 +81,7 @@ export function buildLeafIndexMapSnippet(globalName: string): string {
         idx++;
       });
     }
-    indexLeafs(window["${globalName}"].root);
+    indexLeafs(window[${JSON.stringify(globalName)}].root);
   `;
 }
 
@@ -108,7 +108,7 @@ export function findParentByIndexSnippet(globalName: string, targetIndex: number
       if (__parentIdx++ === ${targetIndex}) { contextNode = node; return; }
       node.children.forEach(function(child) { if (!contextNode) findParentByIndex(child); });
     }
-    findParentByIndex(window["${globalName}"].root);
+    findParentByIndex(window[${JSON.stringify(globalName)}].root);
   `;
 }
 
@@ -124,7 +124,7 @@ export function queryXPathExpression(
       : "var contextNode = null;";
 
   return `(function() {
-    var inst = window["${globalName}"];
+    var inst = window[${JSON.stringify(globalName)}];
     if (!inst || !inst.root) return { error: false, results: [] };
     var root = inst.root;
     var xmlDoc = root.xmlDoc;
@@ -172,7 +172,7 @@ export function focusExpression(
       : "var contextNode = null;";
 
   return `(function() {
-    var inst = window["${globalName}"];
+    var inst = window[${JSON.stringify(globalName)}];
     if (!inst || !inst.requestFocus) return null;
     var root = inst.root;
 
@@ -248,7 +248,7 @@ export function activeRequestExpression(globalName: string): string {
     var req = window.__FOQUERY_ACTIVE_REQUEST__;
     if (!req) return null;
 
-    var inst = window["${globalName}"];
+    var inst = window[${JSON.stringify(globalName)}];
     if (!inst) return null;
 
     ${buildLeafIndexMapSnippet(globalName)}

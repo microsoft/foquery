@@ -19,7 +19,7 @@ export class FoQueryLeafNode implements Types.FoQueryLeafNode {
 
     this.leaf = {
       xmlElements: new Map(),
-      names,
+      names: uniqueNames(names),
       element: undefined!,
       parent: undefined,
       lastFocused: undefined,
@@ -50,7 +50,19 @@ export class FoQueryLeafNode implements Types.FoQueryLeafNode {
   }
 
   public rename(names: string[]): void {
-    if (!this._attached || !this._parent) return;
+    names = uniqueNames(names);
+
+    if (!this._attached || !this._parent) {
+      this.leaf.names = names;
+      return;
+    }
+
+    if (
+      sameNames(this.leaf.names, names) &&
+      sameNames(Array.from(this.leaf.xmlElements.keys()), names)
+    ) {
+      return;
+    }
 
     const oldXmlElements = this.leaf.xmlElements;
     const newXmlElements = new Map<string, Types.XmlElement>();
@@ -147,4 +159,12 @@ export class FoQueryLeafNode implements Types.FoQueryLeafNode {
 
     this._root.notify(this.leaf, true);
   }
+}
+
+function uniqueNames(names: string[]): string[] {
+  return names.length > 1 ? Array.from(new Set(names)) : names.slice();
+}
+
+function sameNames(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((name, index) => name === b[index]);
 }

@@ -11,6 +11,7 @@ const DELEGATED_FOCUS_HANDOFF_TIMEOUT = 250;
 
 interface FoQueryRequestInternalOptions {
   skipAppCoordination?: boolean;
+  root?: Types.RootNode;
 }
 
 class AppFocusCoordinator {
@@ -37,6 +38,11 @@ class AppFocusCoordinator {
   }
 
   public complete(request: FoQueryRequest): void {
+    if (this._queuedRequest === request) {
+      this._queuedRequest = undefined;
+      return;
+    }
+
     if (this._activeRequest !== request) return;
 
     this._activeRequest = undefined;
@@ -48,6 +54,9 @@ class AppFocusCoordinator {
   }
 
   private _start(request: FoQueryRequest): void {
+    // A queued request may have been canceled or timed out before its turn.
+    if (request.status !== RequestStatus.Waiting) return;
+
     this._activeRequest = request;
     request.start();
   }
@@ -106,7 +115,8 @@ export class FoQueryRequest implements Types.Request {
   ) {
     this.xpath = xpath;
     this._contextNode = node;
-    this._root = "subscribe" in node ? (node as Types.RootNode) : findRoot(node);
+    this._root =
+      internalOptions?.root ?? ("subscribe" in node ? (node as Types.RootNode) : findRoot(node));
     this._focusOptions = options?.focusOptions;
     this._requestFocusOptions = options;
     this._simplifications = generateXPathSimplifications(xpath);
@@ -239,6 +249,9 @@ export class FoQueryRequest implements Types.Request {
   }
 
   private _matchPath(): void {
+    // Cleanup runs asynchronously after resolution; ignore tree changes in between.
+    if (!this._resolve) return;
+
     // Stop any active check polling — tree changed, re-evaluate from scratch
     this._stopPolling();
 
@@ -378,6 +391,7 @@ export class FoQueryRequest implements Types.Request {
   private _collectCandidates(
     elements: Types.XmlElement[],
     fallbackParent?: Types.ParentNode,
+    visitedParents: Set<Types.ParentNode> = new Set(),
   ): Types.XmlElement[] {
     const candidates: Types.XmlElement[] = [];
 
@@ -396,10 +410,18 @@ export class FoQueryRequest implements Types.Request {
 
         if (parentNode.focus === undefined) continue;
 
+        // A focus xpath that (directly or transitively) selects the same parent
+        // would otherwise recurse forever.
+        if (visitedParents.has(parentNode)) continue;
+        visitedParents.add(parentNode);
+
         const subCandidates = this._collectCandidates(
           this._query(parentNode.focus, parentNode),
           parentNode,
+          visitedParents,
         );
+
+        visitedParents.delete(parentNode);
 
         if (subCandidates.length === 0) {
           // String focus didn't match yet — children may mount later
