@@ -447,10 +447,15 @@ test.describe("devtools panel UI against live example app", () => {
         { timeout: 2000 },
       );
 
-      const matchedKey = await panel.$eval(".xpath-match", (el) =>
-        el.getAttribute("data-match-key"),
+      const matched = await panel.$$eval(".xpath-match", (els) =>
+        els.map((el) => ({
+          key: el.getAttribute("data-match-key"),
+          name: el.querySelector(":scope > .tree-node-label")?.getAttribute("data-name"),
+        })),
       );
-      expect(matchedKey).toBe("parent:compose");
+      expect(matched).toHaveLength(1);
+      expect(matched[0].name).toBe("compose");
+      expect(matched[0].key).toMatch(/^parent:\d+$/);
     });
   });
 

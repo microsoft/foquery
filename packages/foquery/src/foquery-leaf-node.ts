@@ -149,7 +149,6 @@ export class FoQueryLeafNode implements Types.FoQueryLeafNode {
     }
 
     this.leaf.parent = undefined;
-    this.leaf.focus = undefined;
 
     this.leaf.xmlElements.forEach((xmlElement) => {
       xmlElement.remove();

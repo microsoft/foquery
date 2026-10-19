@@ -7,6 +7,8 @@ import {
   queryXPathExpression,
   focusExpression,
   activeRequestExpression,
+  findLeafByIdSnippet,
+  nodeIdSnippet,
 } from "./expressions.js";
 
 const statusEl = document.getElementById("status")!;
@@ -27,7 +29,7 @@ let queryDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 let lastQueryMatchKeys: Set<string> = new Set();
 let lastQueryValid = false;
 let selectedParentName: string | null = null;
-let selectedParentIndex: number | null = null;
+let selectedParentId: number | null = null;
 
 const HIGHLIGHT_KEY = "__FOQUERY_DEVTOOLS_HIGHLIGHT__";
 
@@ -46,8 +48,8 @@ interface SerializedNode {
   type: "parent" | "leaf";
   name: string;
   lastFocused?: number;
-  leafIndex?: number;
-  parentIndex?: number;
+  leafId?: number;
+  parentId?: number;
   remoteFrameId?: string;
   remoteXPath?: string;
   hasFocus?: boolean;
@@ -60,7 +62,8 @@ interface DiagEl {
   type: string;
   name: string;
   lastFocused?: number;
-  leafIndex?: number;
+  leafId?: number;
+  parentId?: number;
   remoteFrameId?: string;
   remoteXPath?: string;
 }
@@ -167,18 +170,14 @@ function inspectActiveElementExpression(): string {
   })()`;
 }
 
-function highlightElementExpression(globalName: string, leafIndex: number): string {
+function highlightElementExpression(globalName: string, leafId: number): string {
   return `(function() {
     var inst = window[${JSON.stringify(globalName)}];
     if (!inst) return;
     var root = inst.root;
     var highlightKey = "${HIGHLIGHT_KEY}";
-    var idx = 0; var targetLeaf = null;
-    function findLeaf(node) {
-      node.children.forEach(function(child) { findLeaf(child); });
-      node.leafs.forEach(function(leaf) { if (idx === ${leafIndex}) targetLeaf = leaf; idx++; });
-    }
-    findLeaf(root);
+    ${nodeIdSnippet()}
+    ${findLeafByIdSnippet(globalName, leafId)}
     if (!targetLeaf) return;
     var el = targetLeaf.element.deref();
     if (!el) return;
@@ -336,17 +335,13 @@ function clearHighlightExpression(): string {
   })()`;
 }
 
-function inspectElementExpression(globalName: string, leafIndex: number): string {
+function inspectElementExpression(globalName: string, leafId: number): string {
   return `(function() {
     var inst = window[${JSON.stringify(globalName)}];
     if (!inst) return;
     var root = inst.root;
-    var idx = 0; var targetLeaf = null;
-    function findLeaf(node) {
-      node.children.forEach(function(child) { findLeaf(child); });
-      node.leafs.forEach(function(leaf) { if (idx === ${leafIndex}) targetLeaf = leaf; idx++; });
-    }
-    findLeaf(root);
+    ${nodeIdSnippet()}
+    ${findLeafByIdSnippet(globalName, leafId)}
     if (!targetLeaf) return;
     var el = targetLeaf.element.deref();
     if (el) inspect(el);
@@ -382,11 +377,11 @@ function renderTree(node: SerializedNode, container: HTMLElement): void {
 
   const matchKey = getNodeMatchKey(node);
   div.setAttribute("data-match-key", matchKey);
-  if (node.parentIndex !== undefined) {
-    div.setAttribute("data-parent-index", String(node.parentIndex));
+  if (node.parentId !== undefined) {
+    div.setAttribute("data-parent-id", String(node.parentId));
   }
 
-  if (node.type === "parent" && node.parentIndex === selectedParentIndex) {
+  if (node.type === "parent" && node.parentId === selectedParentId) {
     div.classList.add("selected");
   }
 
@@ -404,16 +399,16 @@ function renderTree(node: SerializedNode, container: HTMLElement): void {
     label.appendChild(meta);
   }
 
-  if (node.type === "leaf" && node.leafIndex !== undefined) {
-    const leafIndex = node.leafIndex;
+  if (node.type === "leaf" && node.leafId !== undefined) {
+    const leafId = node.leafId;
     label.addEventListener("mouseenter", () => {
-      void evalInPage(highlightElementExpression(globalNameInput.value, leafIndex));
+      void evalInPage(highlightElementExpression(globalNameInput.value, leafId));
     });
     label.addEventListener("mouseleave", () => {
       void evalInPage(clearHighlightExpression());
     });
     label.addEventListener("click", () => {
-      void evalInPage(inspectElementExpression(globalNameInput.value, leafIndex));
+      void evalInPage(inspectElementExpression(globalNameInput.value, leafId));
     });
   } else if (node.type === "leaf" && node.remoteFrameId && node.remoteXPath) {
     const { remoteFrameId, remoteXPath } = node;
@@ -436,7 +431,7 @@ function renderTree(node: SerializedNode, container: HTMLElement): void {
 
   if (node.type === "parent") {
     label.addEventListener("click", () => {
-      const deselecting = selectedParentIndex === node.parentIndex;
+      const deselecting = selectedParentId === node.parentId;
       selectParent(deselecting ? null : node.name, deselecting ? undefined : node);
     });
   }
@@ -453,12 +448,16 @@ function renderTree(node: SerializedNode, container: HTMLElement): void {
 }
 
 function getNodeMatchKey(
-  node: Pick<SerializedNode, "type" | "name" | "leafIndex" | "remoteFrameId" | "remoteXPath">,
+  node: Pick<
+    SerializedNode,
+    "type" | "name" | "leafId" | "parentId" | "remoteFrameId" | "remoteXPath"
+  >,
 ): string {
-  if (node.type === "leaf" && node.leafIndex !== undefined) return `leaf:${node.leafIndex}`;
+  if (node.type === "leaf" && node.leafId !== undefined) return `leaf:${node.leafId}`;
   if (node.remoteFrameId && node.remoteXPath) {
     return `remote:${node.remoteFrameId}:${node.remoteXPath}`;
   }
+  if (node.parentId !== undefined) return `parent:${node.parentId}`;
   return `parent:${node.name}`;
 }
 
@@ -477,16 +476,16 @@ function applyHighlights(): void {
 
 function applyParentSelection(): void {
   treeEl.querySelectorAll(".tree-parent.selected").forEach((el) => el.classList.remove("selected"));
-  if (selectedParentIndex === null) return;
-  const el = treeEl.querySelector(`.tree-parent[data-parent-index="${selectedParentIndex}"]`);
+  if (selectedParentId === null) return;
+  const el = treeEl.querySelector(`.tree-parent[data-parent-id="${selectedParentId}"]`);
   if (el) el.classList.add("selected");
 }
 
-function findSerializedNode(node: SerializedNode, parentIndex: number): SerializedNode | undefined {
-  if (node.parentIndex === parentIndex) return node;
+function findSerializedNode(node: SerializedNode, parentId: number): SerializedNode | undefined {
+  if (node.parentId === parentId) return node;
   if (node.children) {
     for (const child of node.children) {
-      const found = findSerializedNode(child, parentIndex);
+      const found = findSerializedNode(child, parentId);
       if (found) return found;
     }
   }
@@ -497,7 +496,7 @@ function findSerializedNode(node: SerializedNode, parentIndex: number): Serializ
 
 function selectParent(name: string | null, node?: SerializedNode): void {
   selectedParentName = name;
-  selectedParentIndex = node?.parentIndex ?? null;
+  selectedParentId = node?.parentId ?? null;
   applyParentSelection();
   renderParentInfo(name ? (node ?? null) : null);
   updateContextLabel();
@@ -593,17 +592,17 @@ function createDiagItem(el: DiagEl, extraClass?: string): HTMLElement {
     item.appendChild(metaSpan);
   }
 
-  if (el.type === "leaf" && el.leafIndex !== undefined) {
-    const leafIndex = el.leafIndex;
+  if (el.type === "leaf" && el.leafId !== undefined) {
+    const leafId = el.leafId;
     item.style.cursor = "pointer";
     item.addEventListener("mouseenter", () => {
-      void evalInPage(highlightElementExpression(globalNameInput.value, leafIndex));
+      void evalInPage(highlightElementExpression(globalNameInput.value, leafId));
     });
     item.addEventListener("mouseleave", () => {
       void evalInPage(clearHighlightExpression());
     });
     item.addEventListener("click", () => {
-      void evalInPage(inspectElementExpression(globalNameInput.value, leafIndex));
+      void evalInPage(inspectElementExpression(globalNameInput.value, leafId));
     });
   } else if (el.type === "leaf" && el.remoteFrameId && el.remoteXPath) {
     const { remoteFrameId, remoteXPath } = el;
@@ -767,9 +766,11 @@ async function refreshTree(): Promise<void> {
       }
 
       // Update or clear selection based on whether the selected parent still exists
-      if (selectedParentIndex !== null) {
-        const selectedNode = findSerializedNode(tree, selectedParentIndex);
+      if (selectedParentId !== null) {
+        const selectedNode = findSerializedNode(tree, selectedParentId);
         if (selectedNode) {
+          selectedParentName = selectedNode.name;
+          updateContextLabel();
           renderParentInfo(selectedNode);
         } else {
           selectParent(null);
@@ -818,13 +819,14 @@ async function runQuery(): Promise<void> {
 
   try {
     const response = (await evalInPage(
-      queryXPathExpression(globalName, xpath, selectedParentIndex),
+      queryXPathExpression(globalName, xpath, selectedParentId),
     )) as {
       error: boolean;
       results: {
         type: "parent" | "leaf";
         name: string;
-        leafIndex?: number;
+        leafId?: number;
+        parentId?: number;
         remoteFrameId?: string;
         remoteXPath?: string;
       }[];
@@ -867,7 +869,7 @@ async function runFocus(): Promise<void> {
 
   try {
     const diag = (await evalInPage(
-      focusExpression(globalName, xpath, selectedParentIndex),
+      focusExpression(globalName, xpath, selectedParentId),
     )) as DiagnosticsResult | null;
     if (diag) renderDiagnostics(diag);
 

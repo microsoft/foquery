@@ -36,8 +36,8 @@ export function FoQueryIFrameParent({
 }: FoQueryIFrameParentProps) {
   const parentContext = useContext(FoQueryContext);
   const coreNodeRef = useRef<FoQueryIFrameParentNode | null>(null);
-  // Mutable props are applied in place below; recreating the node would drop the
-  // imported child snapshot, which the child frame only re-sends on changes.
+  // Mutable props are applied in place below; recreating the node would drop the imported
+  // child snapshot until the child answers again and cancel requests delegated to it.
   const mutablePropsRef = useRef({ name, focus, arbiter });
 
   useLayoutEffect(() => {

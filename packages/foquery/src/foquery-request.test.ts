@@ -1998,4 +1998,58 @@ describe("FoQueryRequest", () => {
       button.remove();
     }
   });
+
+  describe("garbage-collected elements", () => {
+    const collected = { deref: () => undefined } as unknown as WeakRef<HTMLElement>;
+
+    it("skips a leaf whose element was collected and focuses a live match", async () => {
+      const rootNode = new FoQueryRootNode(window);
+      const main = new FoQueryParentNode("main", rootNode.root);
+      rootNode.appendParent(main);
+      const dead = new FoQueryLeafNode(["Item"], rootNode.root);
+      const live = new FoQueryLeafNode(["Item"], rootNode.root);
+      const deadButton = document.createElement("button");
+      const liveButton = document.createElement("button");
+      document.body.append(deadButton, liveButton);
+      main.appendLeaf(dead, deadButton);
+      main.appendLeaf(live, liveButton);
+      live.onFocusIn();
+      dead.onFocusIn();
+      dead.leaf.element = collected;
+
+      try {
+        const request = new FoQueryRequest("//main/Item", rootNode.root, { timeout: 500 });
+        await expect(request.promise).resolves.toBe(RequestStatus.Succeeded);
+        expect(document.activeElement).toBe(liveButton);
+      } finally {
+        main.remove();
+        deadButton.remove();
+        liveButton.remove();
+      }
+    });
+
+    it("keeps waiting for a live match instead of stalling on a collected element", async () => {
+      const rootNode = new FoQueryRootNode(window);
+      const main = new FoQueryParentNode("main", rootNode.root);
+      rootNode.appendParent(main);
+      const dead = new FoQueryLeafNode(["Item"], rootNode.root);
+      main.appendLeaf(dead, document.createElement("button"));
+      dead.leaf.element = collected;
+      const liveButton = document.createElement("button");
+      document.body.append(liveButton);
+
+      try {
+        const request = new FoQueryRequest("//main/Item", rootNode.root, { timeout: 1000 });
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        expect(request.status).toBe(RequestStatus.Waiting);
+
+        main.appendLeaf(new FoQueryLeafNode(["Item"], rootNode.root), liveButton);
+        await expect(request.promise).resolves.toBe(RequestStatus.Succeeded);
+        expect(document.activeElement).toBe(liveButton);
+      } finally {
+        main.remove();
+        liveButton.remove();
+      }
+    });
+  });
 });

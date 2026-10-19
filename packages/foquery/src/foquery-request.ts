@@ -397,9 +397,12 @@ export class FoQueryRequest implements Types.Request {
 
     for (const xmlElement of elements) {
       if (xmlElement.foQueryLeafNode) {
+        // A garbage-collected element can never be focused; keep waiting for a live one.
+        if (!xmlElement.foQueryLeafNode.element.deref()) continue;
         this._setEffectiveLastFocused(xmlElement, fallbackParent);
         candidates.push(xmlElement);
       } else if (xmlElement.foQueryRemoteFrameRef) {
+        if (!xmlElement.foQueryRemoteFrameRef.iframeElement.deref()) continue;
         this._effectiveLastFocused.set(
           xmlElement,
           xmlElement.foQueryRemoteFrameRef.lastFocused ?? fallbackParent?.lastFocused ?? 0,

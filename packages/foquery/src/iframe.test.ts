@@ -778,6 +778,7 @@ describe("FoQuery iframe support", () => {
     content.appendParent(messages);
     messages.appendParent(message);
     message.appendParent(frame);
+    postMessageSpy.mockClear();
     dispatchFrameMessage(iframe, createTreeState("card-frame"));
 
     const request = rootNode.requestFocus(
@@ -819,6 +820,7 @@ describe("FoQuery iframe support", () => {
       frameId: "card-frame",
     });
     rootNode.appendParent(frame);
+    postMessageSpy.mockClear();
     dispatchFrameMessage(iframe, createTreeState("card-frame"));
 
     let checksPass = false;
@@ -935,6 +937,7 @@ describe("FoQuery iframe support", () => {
       arbiter,
     });
     rootNode.appendParent(frame);
+    postMessageSpy.mockClear();
 
     dispatchFrameMessage(iframe, {
       ...createTreeState("card-frame"),
@@ -1001,6 +1004,8 @@ describe("FoQuery iframe support", () => {
     });
     rootNode.appendParent(leftFrame);
     rootNode.appendParent(rightFrame);
+    leftPostMessageSpy.mockClear();
+    rightPostMessageSpy.mockClear();
     dispatchFrameMessage(leftIframe, createTreeState("left-frame"));
     dispatchFrameMessage(rightIframe, createTreeState("right-frame"));
 
@@ -1044,6 +1049,7 @@ describe("FoQuery iframe support", () => {
     });
 
     rootNode.appendParent(frame);
+    postMessageSpy.mockClear();
     dispatchFrameMessage(iframe, {
       ...createTreeState("outer-frame"),
       snapshot: {
@@ -1092,6 +1098,7 @@ describe("FoQuery iframe support", () => {
       frameId: "card-frame",
     });
     rootNode.appendParent(frame);
+    postMessageSpy.mockClear();
 
     const request = rootNode.requestFocus("//CardInIframe//Card/DefaultFocusable", {
       timeout: 5000,
@@ -1135,6 +1142,7 @@ describe("FoQuery iframe support", () => {
       frameId: "card-frame",
     });
     rootNode.appendParent(frame);
+    postMessageSpy.mockClear();
     dispatchFrameMessage(iframe, {
       ...createTreeState("card-frame"),
       snapshot: {
@@ -1185,6 +1193,7 @@ describe("FoQuery iframe support", () => {
       frameId: "card-frame",
     });
     rootNode.appendParent(frame);
+    postMessageSpy.mockClear();
     dispatchFrameMessage(iframe, createTreeState("card-frame"));
 
     const request = rootNode.requestFocus("//CardInIframe//Card/DefaultFocusable", {
@@ -1224,6 +1233,7 @@ describe("FoQuery iframe support", () => {
       frameId: "card-frame",
     });
     rootNode.appendParent(frame);
+    postMessageSpy.mockClear();
     dispatchFrameMessage(iframe, createTreeState("card-frame"));
 
     const request = rootNode.requestFocus("//CardInIframe//Card/DefaultFocusable", {
@@ -1345,6 +1355,7 @@ describe("FoQuery iframe support", () => {
       frameId: "card-frame",
     });
     rootNode.appendParent(frame);
+    postMessageSpy.mockClear();
     rootNode.appendParent(local);
     local.appendLeaf(new FoQueryLeafNode(["LocalFocusable"], rootNode.root), localButton);
     dispatchFrameMessage(iframe, createTreeState("card-frame"));
@@ -1419,6 +1430,7 @@ describe("FoQuery iframe support", () => {
       frameId: "card-frame",
     });
     rootNode.appendParent(frame);
+    postMessageSpy.mockClear();
     rootNode.appendParent(local);
     local.appendLeaf(new FoQueryLeafNode(["LocalFocusable"], rootNode.root), localButton);
     dispatchFrameMessage(iframe, createTreeState("card-frame"));
@@ -1458,6 +1470,7 @@ describe("FoQuery iframe support", () => {
     });
     try {
       rootNode.appendParent(frame);
+      postMessageSpy.mockClear();
       dispatchFrameMessage(iframe, createTreeState("card-frame"));
 
       const request = rootNode.requestFocus("//CardInIframe//Card/DefaultFocusable", {
@@ -1509,6 +1522,7 @@ describe("FoQuery iframe support", () => {
       frameId: "card-frame",
     });
     rootNode.appendParent(frame);
+    postMessageSpy.mockClear();
 
     const request = rootNode.requestFocus("//CardInIframe//MissingFocusable", {
       timeout: 100,
@@ -1532,6 +1546,7 @@ describe("FoQuery iframe support", () => {
       frameId: "card-frame",
     });
     rootNode.appendParent(frame);
+    postMessageSpy.mockClear();
     dispatchFrameMessage(iframe, createTreeState("card-frame"));
 
     const request = rootNode.requestFocus("//CardInIframe//Card/DefaultFocusable", {
@@ -1565,6 +1580,8 @@ describe("FoQuery iframe support", () => {
     });
     rootNode.appendParent(leftFrame);
     rootNode.appendParent(rightFrame);
+    leftPostMessageSpy.mockClear();
+    rightPostMessageSpy.mockClear();
     dispatchFrameMessage(leftIframe, createTreeState("left-frame"));
     dispatchFrameMessage(rightIframe, createTreeState("right-frame"));
 
@@ -2358,6 +2375,309 @@ describe("FoQuery iframe support", () => {
         frame.remove();
         iframe.remove();
       }
+    });
+
+    describe("frame identity and lifecycle", () => {
+      it("adopts the frameId announced by its own iframe when none is given", async () => {
+        const leftIframe = createActualCrossOriginLeafFrame("left-document");
+        const rightIframe = createActualCrossOriginLeafFrame("right-document");
+        const rootNode = new FoQueryRootNode(window);
+        const leftFrame = new FoQueryIFrameParentNode("Left", rootNode.root, leftIframe);
+        const rightFrame = new FoQueryIFrameParentNode("Right", rootNode.root, rightIframe);
+        rootNode.appendParent(leftFrame);
+        rootNode.appendParent(rightFrame);
+
+        try {
+          await waitForCondition(
+            () =>
+              rootNode.query("//Left//Card/DefaultFocusable").length === 1 &&
+              rootNode.query("//Right//Card/DefaultFocusable").length === 1,
+          );
+          expect(leftFrame.frameId).toBe("left-document");
+          expect(rightFrame.frameId).toBe("right-document");
+
+          // The child only answers delegate-focus messages carrying its own frameId.
+          await expect(
+            rootNode.requestFocus("//Right//Card/DefaultFocusable", { timeout: 1000 }).promise,
+          ).resolves.toBe(RequestStatus.Succeeded);
+        } finally {
+          leftFrame.remove();
+          rightFrame.remove();
+          leftIframe.remove();
+          rightIframe.remove();
+        }
+      });
+
+      it("only adopts a frameId from its own iframe and never overrides an explicit one", () => {
+        const explicitIframe = document.createElement("iframe");
+        const unverifiedIframe = document.createElement("iframe");
+        document.body.append(explicitIframe, unverifiedIframe);
+        const rootNode = new FoQueryRootNode(window);
+        const explicit = new FoQueryIFrameParentNode("Explicit", rootNode.root, explicitIframe, {
+          frameId: "card-frame",
+        });
+        const unverified = new FoQueryIFrameParentNode(
+          "Unverified",
+          rootNode.root,
+          unverifiedIframe,
+          { verifySource: false },
+        );
+        rootNode.appendParent(explicit);
+        rootNode.appendParent(unverified);
+        const unverifiedId = unverified.frameId;
+
+        try {
+          dispatchFrameMessage(explicitIframe, createTreeState("other-frame"));
+          expect(explicit.frameId).toBe("card-frame");
+          expect(rootNode.query("//Explicit//DefaultFocusable")).toHaveLength(0);
+
+          window.dispatchEvent(
+            new MessageEvent("message", {
+              data: createTreeState("another-frame"),
+              origin: window.location.origin,
+              source: window,
+            }),
+          );
+          expect(unverified.frameId).toBe(unverifiedId);
+          expect(rootNode.query("//Unverified//DefaultFocusable")).toHaveLength(0);
+        } finally {
+          explicit.remove();
+          unverified.remove();
+          explicitIframe.remove();
+          unverifiedIframe.remove();
+        }
+      });
+
+      it("re-delegates under the new frameId when its iframe loads a document with another frameId", async () => {
+        const iframe = document.createElement("iframe");
+        document.body.appendChild(iframe);
+        const postMessageSpy = vi.spyOn(iframe.contentWindow!, "postMessage");
+        const rootNode = new FoQueryRootNode(window);
+        const frame = new FoQueryIFrameParentNode("CardInIframe", rootNode.root, iframe);
+        rootNode.appendParent(frame);
+        postMessageSpy.mockClear();
+
+        try {
+          dispatchFrameMessage(iframe, createTreeState("first-document"));
+          expect(frame.frameId).toBe("first-document");
+          const request = rootNode.requestFocus("//CardInIframe//Card/DefaultFocusable", {
+            timeout: 2000,
+          });
+          expect(findMessage(postMessageSpy, "delegate-focus")).toEqual([
+            expect.objectContaining({ frameId: "first-document" }),
+          ]);
+
+          dispatchFrameMessage(
+            iframe,
+            frameMessage({ type: "child-ready", frameId: "second-document" }),
+          );
+          expect(frame.frameId).toBe("second-document");
+          expect(rootNode.query("//CardInIframe//DefaultFocusable")).toHaveLength(0);
+
+          dispatchFrameMessage(iframe, createTreeState("second-document"));
+          await waitForCondition(() => findMessage(postMessageSpy, "delegate-focus").length === 2);
+          const second = findMessage(postMessageSpy, "delegate-focus")[1] as {
+            frameId?: string;
+            requestId?: string;
+          };
+          expect(second.frameId).toBe("second-document");
+          expect(findMessage(postMessageSpy, "cancel-focus")).toHaveLength(0);
+
+          dispatchFrameMessage(
+            iframe,
+            frameMessage({
+              type: "focus-result",
+              frameId: "second-document",
+              requestId: second.requestId,
+              status: RequestStatus.Succeeded,
+            }),
+          );
+          await expect(request.promise).resolves.toBe(RequestStatus.Succeeded);
+        } finally {
+          frame.remove();
+          iframe.remove();
+        }
+      });
+
+      it("asks the child for its tree when connected and reconnects after remove and re-append", async () => {
+        const iframe = document.createElement("iframe");
+        document.body.appendChild(iframe);
+        const postMessageSpy = vi.spyOn(iframe.contentWindow!, "postMessage");
+        postMessageSpy.mockClear();
+        const rootNode = new FoQueryRootNode(window);
+        const frame = new FoQueryIFrameParentNode("CardInIframe", rootNode.root, iframe, {
+          frameId: "card-frame",
+        });
+        rootNode.appendParent(frame);
+
+        try {
+          expect(findMessage(postMessageSpy, "request-tree-state")).toEqual([
+            expect.objectContaining({ frameId: "card-frame" }),
+          ]);
+          dispatchFrameMessage(iframe, createTreeState("card-frame"));
+
+          frame.remove();
+          expect(frame.node.iframeDelegateFocus).toBeUndefined();
+          dispatchFrameMessage(iframe, createTreeState("card-frame"));
+          expect(rootNode.query("//CardInIframe")).toHaveLength(0);
+
+          postMessageSpy.mockClear();
+          rootNode.appendParent(frame);
+          expect(findMessage(postMessageSpy, "request-tree-state")).toHaveLength(1);
+          expect(rootNode.query("//CardInIframe//DefaultFocusable")).toHaveLength(0);
+
+          dispatchFrameMessage(iframe, createTreeState("card-frame"));
+          const request = rootNode.requestFocus("//CardInIframe//Card/DefaultFocusable", {
+            timeout: 5000,
+          });
+          const [delegateMessage] = findMessage(postMessageSpy, "delegate-focus");
+          expect(delegateMessage).toBeDefined();
+          dispatchFrameMessage(
+            iframe,
+            frameMessage({
+              type: "focus-result",
+              frameId: "card-frame",
+              requestId: delegateMessage.requestId,
+              status: RequestStatus.Succeeded,
+            }),
+          );
+          await expect(request.promise).resolves.toBe(RequestStatus.Succeeded);
+        } finally {
+          frame.remove();
+          iframe.remove();
+        }
+      });
+
+      it("does not reconnect after dispose()", () => {
+        const iframe = document.createElement("iframe");
+        document.body.appendChild(iframe);
+        const postMessageSpy = vi.spyOn(iframe.contentWindow!, "postMessage");
+        const rootNode = new FoQueryRootNode(window);
+        const frame = new FoQueryIFrameParentNode("CardInIframe", rootNode.root, iframe, {
+          frameId: "card-frame",
+        });
+        rootNode.appendParent(frame);
+
+        try {
+          frame.dispose();
+          frame.remove();
+          postMessageSpy.mockClear();
+          rootNode.appendParent(frame);
+
+          expect(postMessageSpy).not.toHaveBeenCalled();
+          expect(frame.node.iframeDelegateFocus).toBeUndefined();
+          dispatchFrameMessage(iframe, createTreeState("card-frame"));
+          expect(rootNode.query("//CardInIframe//DefaultFocusable")).toHaveLength(0);
+        } finally {
+          frame.remove();
+          iframe.remove();
+        }
+      });
+
+      it("does not ask an iframe for its tree while it shows a document of another origin", () => {
+        const iframe = document.createElement("iframe");
+        document.body.appendChild(iframe);
+        const postMessageSpy = vi.spyOn(iframe.contentWindow!, "postMessage");
+        postMessageSpy.mockClear();
+        const rootNode = new FoQueryRootNode(window);
+        const frame = new FoQueryIFrameParentNode("CardInIframe", rootNode.root, iframe, {
+          frameId: "card-frame",
+          targetOrigin: "https://child.example",
+        });
+        rootNode.appendParent(frame);
+
+        try {
+          expect(postMessageSpy).not.toHaveBeenCalled();
+        } finally {
+          frame.remove();
+          iframe.remove();
+        }
+      });
+
+      it("answers request-tree-state from the parent regardless of frameId", () => {
+        const postMessageSpy = vi.spyOn(window.parent, "postMessage");
+        const rootNode = new FoQueryRootNode(window);
+        const connection = connectFoQueryChildFrame(rootNode, { frameId: "child-frame" });
+        postMessageSpy.mockClear();
+
+        try {
+          dispatchFromParent(frameMessage({ type: "request-tree-state", frameId: "unknown" }));
+          expect(findMessage(postMessageSpy, "tree-state")).toEqual([
+            expect.objectContaining({ frameId: "child-frame" }),
+          ]);
+
+          postMessageSpy.mockClear();
+          dispatchFromParent(
+            frameMessage({ type: "request-tree-state", frameId: "unknown" }),
+            window,
+          );
+          expect(postMessageSpy).not.toHaveBeenCalled();
+        } finally {
+          connection.dispose();
+        }
+      });
+
+      it("coalesces synchronous tree changes into one tree-state message", async () => {
+        const postMessageSpy = vi.spyOn(window.parent, "postMessage");
+        const rootNode = new FoQueryRootNode(window);
+        const connection = connectFoQueryChildFrame(rootNode, { frameId: "child-frame" });
+        const card = new FoQueryParentNode("Card", rootNode.root);
+        postMessageSpy.mockClear();
+
+        try {
+          rootNode.appendParent(card);
+          for (let i = 0; i < 5; i++) {
+            card.appendLeaf(
+              new FoQueryLeafNode([`Item${i}`], rootNode.root),
+              document.createElement("button"),
+            );
+          }
+          expect(findMessage(postMessageSpy, "tree-state")).toHaveLength(0);
+
+          await Promise.resolve();
+          const posts = findMessage(postMessageSpy, "tree-state") as {
+            snapshot?: { children?: { children?: unknown[] }[] };
+          }[];
+          expect(posts).toHaveLength(1);
+          expect(posts[0].snapshot?.children?.[0]?.children).toHaveLength(5);
+
+          connection.dispose();
+          card.remove();
+          await Promise.resolve();
+          expect(findMessage(postMessageSpy, "tree-state")).toHaveLength(1);
+        } finally {
+          connection.dispose();
+          card.remove();
+        }
+      });
+
+      it("does not pick a remote candidate whose iframe element was collected", async () => {
+        const iframe = document.createElement("iframe");
+        document.body.appendChild(iframe);
+        const postMessageSpy = vi.spyOn(iframe.contentWindow!, "postMessage");
+        const rootNode = new FoQueryRootNode(window);
+        const frame = new FoQueryIFrameParentNode("CardInIframe", rootNode.root, iframe, {
+          frameId: "card-frame",
+        });
+        rootNode.appendParent(frame);
+        dispatchFrameMessage(iframe, createTreeState("card-frame"));
+        postMessageSpy.mockClear();
+        const [remote] = rootNode.query("//CardInIframe//DefaultFocusable") as Types.XmlElement[];
+        remote.foQueryRemoteFrameRef!.iframeElement = {
+          deref: () => undefined,
+        } as unknown as WeakRef<HTMLIFrameElement>;
+
+        try {
+          const request = rootNode.requestFocus("//CardInIframe//Card/DefaultFocusable", {
+            timeout: 100,
+          });
+          await expect(request.promise).resolves.toBe(RequestStatus.TimedOut);
+          expect(findMessage(postMessageSpy, "delegate-focus")).toHaveLength(0);
+        } finally {
+          frame.remove();
+          iframe.remove();
+        }
+      });
     });
   });
 });

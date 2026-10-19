@@ -64,6 +64,10 @@ rootNode.requestFocus("//content/message/CardInIframe//Card/DefaultFocusable");
 
 The iframe node receives serialized child tree snapshots through `postMessage` and imports them under its XML element. Queries can return local `Types.XmlElement` objects and remote iframe-backed XML elements in the same result array.
 
+When `frameId` is omitted, the node adopts the frameId announced by the document loaded in its iframe (messages whose `source` is `iframe.contentWindow`), so several iframes work without coordinating ids. If the iframe loads a document with a different frameId, the old snapshot is dropped and pending requests are re-delegated to the new document. With `verifySource: false` the sender can't be identified, so pass the same explicit `frameId` to both sides.
+
+`remove()` detaches the node and stops listening; appending it again reconnects and asks the child for a fresh snapshot. `dispose()` disconnects permanently.
+
 ### Child iframe
 
 Inside the iframe, create a normal FoQuery root and connect it to its parent:
@@ -77,7 +81,7 @@ childRoot.appendParent(card);
 card.appendLeaf(new FoQueryLeafNode(["DefaultFocusable"], childRoot.root), button);
 ```
 
-The child posts its current tree upward whenever it changes. Child-originated `requestFocus()` calls are forwarded upward to the owning FoQuery app root so it can preserve single-active-request behavior within that root window and its iframe subtree while routing through nested iframe boundaries. Children never receive the parent tree.
+The child posts its current tree upward whenever it changes (synchronous bursts of changes are coalesced into one message) and whenever the parent node asks for it. Child-originated `requestFocus()` calls are forwarded upward to the owning FoQuery app root so it can preserve single-active-request behavior within that root window and its iframe subtree while routing through nested iframe boundaries. Children never receive the parent tree.
 
 The child only accepts messages whose `source` is `window.parent`. If the parent frame's code drives the iframe from its own JavaScript realm (for example, rendering into a same-origin iframe), pass `verifySource: false` to both `connectFoQueryChildFrame()` and the parent `FoQueryIFrameParentNode`.
 
@@ -102,7 +106,7 @@ childRoot.requestFocus("//content/message/SecondaryCardInIframe//Card/DefaultFoc
 
 ### Message protocol
 
-Iframe messages use a versioned FoQuery namespace and are ignored when the namespace, version, source window, or configured origin does not match. The protocol includes `child-ready`, `tree-state`, `request-focus`, `delegate-focus`, `focus-result`, and `cancel-focus` messages. Canceling a cross-frame request (explicitly, by timeout, or by disposing the connection) sends `cancel-focus` so the other frame stops waiting for the target; a `child-ready` from a reloaded iframe cancels requests that were delegated to its previous document. Malformed `tree-state` snapshots are ignored and the previous snapshot is kept.
+Iframe messages use a versioned FoQuery namespace and are ignored when the namespace, version, source window, or configured origin does not match. The protocol includes `child-ready`, `tree-state`, `request-tree-state`, `request-focus`, `delegate-focus`, `focus-result`, and `cancel-focus` messages. The parent sends `request-tree-state` when it connects; the child answers it with its `tree-state` whatever frameId the request carries, which is how a parent without an explicit `frameId` learns it. Canceling a cross-frame request (explicitly, by timeout, or by disposing the connection) sends `cancel-focus` so the other frame stops waiting for the target; a `child-ready` from a reloaded iframe cancels requests that were delegated to its previous document. Malformed `tree-state` snapshots are ignored and the previous snapshot is kept.
 
 ## Focus request features
 
